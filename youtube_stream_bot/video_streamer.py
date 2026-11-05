@@ -24,10 +24,11 @@ class YouTubeFrameStreamer:
         self.frame_bytes = self.width * self.height * config.FRAME_CHANNELS
         self.ffmpeg_bin = config.get_ffmpeg_binary()
 
-    def _extract_stream_url(self, youtube_url: str) -> str:
+    def _extract_stream_url(self, youtube_url: str) -> tuple[str, float, str]:
         """
-        Calls yt-dlp -g to fetch a fresh direct stream HTTPS URL pinned <= 720p.
+        Calls yt-dlp to fetch duration, title, and fresh direct stream HTTPS URL pinned <= 720p.
         Throws RuntimeError if link is invalid or unavailable.
+        Returns: (stream_url, duration_seconds, title)
         """
         youtube_url = youtube_url.strip().strip('"\'')
         if not youtube_url or youtube_url.startswith("#") or not (youtube_url.startswith("http://") or youtube_url.startswith("https://")):
@@ -35,6 +36,7 @@ class YouTubeFrameStreamer:
         cmd = [
             "yt-dlp",
             "-g",
+            "--print", "%(duration)s###%(title)s",
             "-f", "bestvideo[height<=720][ext=mp4]/bestvideo[height<=720]/best[height<=720]",
             "--no-playlist",
             "--no-warnings",
@@ -51,20 +53,42 @@ class YouTubeFrameStreamer:
         if proc.returncode != 0 or not proc.stdout.strip():
             raise RuntimeError(f"yt-dlp error: {proc.stderr.strip()[:200]}")
 
-        # The first output line is the video stream URL
-        stream_url = proc.stdout.strip().split("\n")[0]
-        return stream_url
+        lines = [line.strip() for line in proc.stdout.strip().split("\n") if line.strip()]
+        duration_sec = 0.0
+        title = "Minecraft Gameplay"
+        stream_url = ""
+        if len(lines) >= 2:
+            meta = lines[0].split("###")
+            try:
+                duration_sec = float(meta[0])
+            except (ValueError, IndexError):
+                duration_sec = 0.0
+            if len(meta) > 1 and meta[1].strip():
+                title = meta[1].strip()
+            stream_url = lines[1]
+        elif len(lines) == 1:
+            stream_url = lines[0]
 
-    def stream_frames(self, youtube_url: str) -> Generator[np.ndarray, None, None]:
+        return stream_url, duration_sec, title
+
+    def stream_frames(self, youtube_url: str) -> Generator[tuple[np.ndarray, dict], None, None]:
         """
-        Yields raw decoded gameplay frames in memory as NumPy arrays:
-        Shape: [H, W, C] = [128, 128, 3], uint8
+        Yields raw decoded gameplay frames in memory as NumPy arrays with video metadata:
+        Yields: (frame [128, 128, 3] uint8, metadata dict)
         """
         try:
-            stream_url = self._extract_stream_url(youtube_url)
+            stream_url, duration_sec, title = self._extract_stream_url(youtube_url)
         except Exception as e:
             print(f"[Streamer Notice] Skipping unavailable video ({youtube_url}): {e}", flush=True)
             return
+
+        total_frames = int(duration_sec * self.fps) if duration_sec > 0 else 0
+        meta = {
+            "title": title,
+            "duration_sec": duration_sec,
+            "total_frames": total_frames,
+            "url": youtube_url
+        }
 
         # FFmpeg subprocess piping directly to stdout (pipe:1) with no disk caching
         ffmpeg_cmd = [
@@ -103,7 +127,7 @@ class YouTubeFrameStreamer:
                 if frame.mean() < 8.0:
                     continue
 
-                yield frame
+                yield frame, meta
         finally:
             process.stdout.close()
             process.kill()

@@ -42,3 +42,7 @@ class LinkQueueManager:
     def remaining(self) -> int:
         """Returns the number of queued URLs pending processing."""
         return self._queue.qsize()
+
+    def total_added(self) -> int:
+        """Returns the total number of links added to this queue manager."""
+        return self._total_added

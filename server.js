@@ -62,6 +62,7 @@ try {
 let youtubeTelemetry = {
   isRunning: false,
   currentVideo: null,
+  videoTitle: 'Minecraft Gameplay',
   bufferCount: 0,
   bufferMax: 50000,
   step: 0,
@@ -70,6 +71,21 @@ let youtubeTelemetry = {
   camLoss: 0,
   speed: 0,
   lastFrame: 0,
+  totalFrames: 0,
+  videoPercent: 0,
+  currentTimeStr: '00:00',
+  totalTimeStr: '00:00',
+  currentSeconds: 0,
+  totalSeconds: 0,
+  speedFps: 0,
+  speedFactor: 1.0,
+  videoEta: '--:--',
+  videoEtaSeconds: 0,
+  setProgress: 0,
+  setEta: '--:--',
+  setEtaSeconds: 0,
+  queueIndex: 1,
+  queueTotal: 1,
   lastKeys: 'IDLE',
   lastMouse: { dx: '+0.00', dy: '+0.00' }
 };
@@ -1018,6 +1034,55 @@ const server = http.createServer((req, res) => {
           if (line.includes('---> Streaming from:')) {
             const parts = line.split('---> Streaming from:');
             if (parts[1]) youtubeTelemetry.currentVideo = parts[1].trim();
+          }
+
+          if (line.includes('[STREAMING PROGRESS]')) {
+            const frameMatch = line.match(/Frame #(\d+)\/(\d+) \((\d+\.?\d*)%\)/);
+            const timeMatch = line.match(/Time: ([^\s]+)\/([^\s]+) \((\d+\.?\d*)s\/(\d+\.?\d*)s\)/);
+            const speedMatch = line.match(/Speed: ([\d\.]+)fps \(([\d\.]+)x\)/);
+            const vEtaMatch = line.match(/VideoETA: ([^\s]+) \((\d+)s\)/);
+            const sProgMatch = line.match(/SetProgress: ([\d\.]+)%/);
+            const sEtaMatch = line.match(/SetETA: ([^\s]+) \((\d+)s\)/);
+            const qMatch = line.match(/Queue: (\d+)\/(\d+)/);
+            const keysMatch = line.match(/Keys: \[(.*?)\]/);
+            const mouseMatch = line.match(/Mouse: \(dx:([+-]?[\d\.]+),\s*dy:([+-]?[\d\.]+)\)/);
+            const bufMatch = line.match(/Buffer: (\d+)\/(\d+)/);
+            const titleMatch = line.match(/Title: (.*)$/);
+
+            if (frameMatch) {
+              youtubeTelemetry.lastFrame = parseInt(frameMatch[1], 10);
+              youtubeTelemetry.totalFrames = parseInt(frameMatch[2], 10);
+              youtubeTelemetry.videoPercent = parseFloat(frameMatch[3]);
+            }
+            if (timeMatch) {
+              youtubeTelemetry.currentTimeStr = timeMatch[1];
+              youtubeTelemetry.totalTimeStr = timeMatch[2];
+              youtubeTelemetry.currentSeconds = parseFloat(timeMatch[3]);
+              youtubeTelemetry.totalSeconds = parseFloat(timeMatch[4]);
+            }
+            if (speedMatch) {
+              youtubeTelemetry.speedFps = parseFloat(speedMatch[1]);
+              youtubeTelemetry.speedFactor = parseFloat(speedMatch[2]);
+            }
+            if (vEtaMatch) {
+              youtubeTelemetry.videoEta = vEtaMatch[1];
+              youtubeTelemetry.videoEtaSeconds = parseInt(vEtaMatch[2], 10);
+            }
+            if (sProgMatch) {
+              youtubeTelemetry.setProgress = parseFloat(sProgMatch[1]);
+            }
+            if (sEtaMatch) {
+              youtubeTelemetry.setEta = sEtaMatch[1];
+              youtubeTelemetry.setEtaSeconds = parseInt(sEtaMatch[2], 10);
+            }
+            if (qMatch) {
+              youtubeTelemetry.queueIndex = parseInt(qMatch[1], 10);
+              youtubeTelemetry.queueTotal = parseInt(qMatch[2], 10);
+            }
+            if (keysMatch) youtubeTelemetry.lastKeys = keysMatch[1];
+            if (mouseMatch) youtubeTelemetry.lastMouse = { dx: mouseMatch[1], dy: mouseMatch[2] };
+            if (bufMatch) youtubeTelemetry.bufferCount = parseInt(bufMatch[1], 10);
+            if (titleMatch) youtubeTelemetry.videoTitle = titleMatch[1].trim();
           }
 
           if (line.includes('IDM Inferred Keys:')) {
