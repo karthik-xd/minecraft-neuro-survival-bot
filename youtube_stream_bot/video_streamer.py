@@ -7,6 +7,8 @@ Enforces:
   3. Dynamic stream URL resolution per video (no expired URLs).
   4. Non-gameplay / black frame filtering.
 """
+import os
+import re
 import subprocess
 import numpy as np
 from typing import Generator

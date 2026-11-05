@@ -5,3 +5,7 @@ __pycache__/
 *.log
 .env
 .vscode/
+data_bot/local_videos/
+*.mp4
+*.mkv
+*.webm
