@@ -71,39 +71,93 @@ class YouTubeFrameStreamer:
 
         return stream_url, duration_sec, title
 
-    def stream_frames(self, youtube_url: str) -> Generator[tuple[np.ndarray, dict], None, None]:
+    def _is_local_file(self, source: str) -> bool:
+        s = source.strip().strip('"\'')
+        if s.startswith("http://") or s.startswith("https://"):
+            return False
+        if os.path.exists(s) and os.path.isfile(s):
+            return True
+        ext = os.path.splitext(s)[1].lower()
+        return ext in [".mp4", ".mkv", ".avi", ".mov", ".webm", ".flv", ".wmv", ".m4v"]
+
+    def _get_local_video_info(self, file_path: str) -> tuple[str, float, str]:
+        """
+        Extracts duration and filename for a local video file.
+        Returns: (file_path, duration_seconds, title)
+        """
+        file_path = os.path.abspath(file_path.strip().strip('"\''))
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Local video file not found: {file_path}")
+        title = os.path.basename(file_path)
+        duration_sec = 0.0
+
+        try:
+            cmd = [self.ffmpeg_bin, "-nostdin", "-i", file_path, "-hide_banner"]
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, text=True, timeout=10)
+            import re
+            m = re.search(r"Duration:\s*(\d+):(\d+):(\d+\.?\d*)", res.stderr)
+            if m:
+                duration_sec = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
+        except Exception:
+            pass
+
+        return file_path, duration_sec, title
+
+    def stream_frames(self, video_source: str) -> Generator[tuple[np.ndarray, dict], None, None]:
         """
         Yields raw decoded gameplay frames in memory as NumPy arrays with video metadata:
+        Handles BOTH YouTube stream URLs and Local video files (.mp4, .mkv, .webm).
         Yields: (frame [128, 128, 3] uint8, metadata dict)
         """
-        try:
-            stream_url, duration_sec, title = self._extract_stream_url(youtube_url)
-        except Exception as e:
-            print(f"[Streamer Notice] Skipping unavailable video ({youtube_url}): {e}", flush=True)
-            return
+        is_local = self._is_local_file(video_source)
+        if is_local:
+            try:
+                stream_url, duration_sec, title = self._get_local_video_info(video_source)
+            except Exception as e:
+                print(f"[Streamer Notice] Skipping unavailable local video ({video_source}): {e}", flush=True)
+                return
+        else:
+            try:
+                stream_url, duration_sec, title = self._extract_stream_url(video_source)
+            except Exception as e:
+                print(f"[Streamer Notice] Skipping unavailable YouTube video ({video_source}): {e}", flush=True)
+                return
 
         total_frames = int(duration_sec * self.fps) if duration_sec > 0 else 0
         meta = {
             "title": title,
             "duration_sec": duration_sec,
             "total_frames": total_frames,
-            "url": youtube_url
+            "url": video_source,
+            "is_local": is_local
         }
 
         # FFmpeg subprocess piping directly to stdout (pipe:1) with no disk caching
-        ffmpeg_cmd = [
-            self.ffmpeg_bin,
-            "-nostdin",
-            "-loglevel", "error",
-            "-reconnect", "1",
-            "-reconnect_streamed", "1",
-            "-reconnect_delay_max", "5",
-            "-i", stream_url,
-            "-vf", f"scale={self.width}:{self.height},fps={self.fps}",
-            "-f", "rawvideo",
-            "-pix_fmt", "rgb24",
-            "pipe:1"
-        ]
+        if is_local:
+            ffmpeg_cmd = [
+                self.ffmpeg_bin,
+                "-nostdin",
+                "-loglevel", "error",
+                "-i", stream_url,
+                "-vf", f"scale={self.width}:{self.height},fps={self.fps}",
+                "-f", "rawvideo",
+                "-pix_fmt", "rgb24",
+                "pipe:1"
+            ]
+        else:
+            ffmpeg_cmd = [
+                self.ffmpeg_bin,
+                "-nostdin",
+                "-loglevel", "error",
+                "-reconnect", "1",
+                "-reconnect_streamed", "1",
+                "-reconnect_delay_max", "5",
+                "-i", stream_url,
+                "-vf", f"scale={self.width}:{self.height},fps={self.fps}",
+                "-f", "rawvideo",
+                "-pix_fmt", "rgb24",
+                "pipe:1"
+            ]
 
         process = subprocess.Popen(
             ffmpeg_cmd,

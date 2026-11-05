@@ -40,23 +40,34 @@ process.on('uncaughtException', err => {
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(DEMO_DIR, { recursive: true });
+const LOCAL_VIDEOS_DIR = path.join(DATA_DIR, 'local_videos');
+fs.mkdirSync(LOCAL_VIDEOS_DIR, { recursive: true });
 
 let activeYoutubeProcess = null;
 let youtubeQueue = [];
 let youtubeLogs = [
-  '[STREAM READY] In-memory YouTube stream engine initialized. 0 bytes written to disk.'
+  '[STREAM READY] In-memory Video & Stream Engine active. Zero disk writes during streaming.'
 ];
+
+function isVideoSource(str) {
+  if (!str) return false;
+  const s = str.trim().replace(/^['"]|['"]$/g, '');
+  if (!s || s.startsWith('#')) return false;
+  if (s.startsWith('http://') || s.startsWith('https://')) return true;
+  const exts = ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.flv', '.wmv', '.m4v'];
+  return exts.some(ext => s.toLowerCase().endsWith(ext)) || (fs.existsSync(s) && fs.statSync(s).isFile());
+}
 
 // Load existing links from links.txt if exists
 try {
   if (fs.existsSync(LINKS_FILE)) {
     const rawLinks = fs.readFileSync(LINKS_FILE, 'utf8').split('\n');
     youtubeQueue = rawLinks
-      .map(l => l.trim())
-      .filter(l => l && !l.startsWith('#') && (l.includes('youtube.com') || l.includes('youtu.be')));
+      .map(l => l.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(l => isVideoSource(l));
   }
 } catch (e) {
-  console.warn('[YOUTUBE INIT] Could not read links.txt:', e.message);
+  console.warn('[VIDEO INIT] Could not read links.txt:', e.message);
 }
 
 let youtubeTelemetry = {
@@ -944,17 +955,17 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // 8e. YouTube In-Memory Stream Bot API: Add Link to Queue
+  // 8e. Video Stream Bot API: Add YouTube URL or Local File Path to Queue
   if (pathname === '/api/youtube/queue' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
     req.on('end', () => {
       try {
         const data = JSON.parse(body || '{}');
-        const urlStr = (data.url || '').trim();
-        if (!urlStr || (!urlStr.includes('youtube.com') && !urlStr.includes('youtu.be'))) {
+        const urlStr = (data.url || data.path || '').trim().replace(/^['"]|['"]$/g, '');
+        if (!urlStr || !isVideoSource(urlStr)) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Valid YouTube URL required' }));
+          res.end(JSON.stringify({ error: 'Valid YouTube URL or local video file path (.mp4, .mkv, .webm) required' }));
           return;
         }
 
@@ -968,7 +979,7 @@ const server = http.createServer((req, res) => {
           activeYoutubeProcess.stdin.write(urlStr + '\n');
         }
 
-        latestTelemetry.recentLogs.push(`[YOUTUBE QUEUE] Enqueued: ${urlStr}`);
+        latestTelemetry.recentLogs.push(`[VIDEO QUEUE] Enqueued: ${path.basename(urlStr)}`);
         if (latestTelemetry.recentLogs.length > 50) latestTelemetry.recentLogs.shift();
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -981,7 +992,71 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // 8f. YouTube In-Memory Stream Bot API: Remove Link
+  // 8e-2. Upload Local Video File Directly to Queue
+  if (pathname === '/api/video/upload' && req.method === 'POST') {
+    const rawFilename = req.headers['x-filename'] || `local_${Date.now()}.mp4`;
+    const safeFilename = path.basename(decodeURIComponent(rawFilename)).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+    const destPath = path.join(LOCAL_VIDEOS_DIR, safeFilename);
+
+    const writeStream = fs.createWriteStream(destPath);
+    req.pipe(writeStream);
+
+    writeStream.on('finish', () => {
+      if (!youtubeQueue.includes(destPath)) {
+        youtubeQueue.push(destPath);
+        fs.appendFileSync(LINKS_FILE, '\n' + destPath);
+      }
+      if (activeYoutubeProcess && activeYoutubeProcess.stdin && !activeYoutubeProcess.stdin.destroyed) {
+        activeYoutubeProcess.stdin.write(destPath + '\n');
+      }
+      latestTelemetry.recentLogs.push(`[LOCAL VIDEO] Enqueued uploaded video: ${safeFilename}`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, path: destPath, queue: youtubeQueue }));
+    });
+
+    writeStream.on('error', (err) => {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    });
+    return;
+  }
+
+  // 8e-3. Local Video HTTP Streaming (Partial Content 206 for Browser Video Player)
+  if (pathname === '/api/video/stream' && req.method === 'GET') {
+    const filePath = req.url.split('?file=')[1] ? decodeURIComponent(req.url.split('?file=')[1]) : null;
+    if (!filePath || !fs.existsSync(filePath)) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('Local video not found');
+      return;
+    }
+    const stat = fs.statSync(filePath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunksize = (end - start) + 1;
+      const file = fs.createReadStream(filePath, { start, end });
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunksize,
+        'Content-Type': 'video/mp4'
+      });
+      file.pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Content-Type': 'video/mp4'
+      });
+      fs.createReadStream(filePath).pipe(res);
+    }
+    return;
+  }
+
+  // 8f. YouTube / Local Video API: Remove Video from Queue
   if (pathname === '/api/youtube/remove' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
