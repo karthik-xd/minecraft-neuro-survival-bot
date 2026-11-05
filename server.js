@@ -1077,7 +1077,11 @@ const server = http.createServer((req, res) => {
   // 8h. YouTube In-Memory Stream Bot API: Stop Pipeline
   if (pathname === '/api/youtube/stop' && req.method === 'POST') {
     if (activeYoutubeProcess) {
-      activeYoutubeProcess.kill();
+      if (process.platform === 'win32' && activeYoutubeProcess.pid) {
+        spawn('taskkill', ['/pid', activeYoutubeProcess.pid.toString(), '/T', '/F']);
+      } else {
+        activeYoutubeProcess.kill('SIGKILL');
+      }
       activeYoutubeProcess = null;
       youtubeTelemetry.isRunning = false;
       latestTelemetry.recentLogs.push('[YOUTUBE BOT] Termination signal sent to Python pipeline.');

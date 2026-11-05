@@ -152,14 +152,14 @@ class StreamingTrainer:
         """
         Main training loop. Uniformly samples uncorrelated random mini-batches from the Replay Buffer.
         """
-        print("[Trainer] Waiting for replay buffer warmup...")
+        print("[Trainer] Waiting for replay buffer warmup...", flush=True)
         while len(self.replay_buffer) < self.min_buffer_warmup:
             if self.stop_signal.is_set():
                 return
             time.sleep(1.0)
-            print(f"[Trainer] Buffer warmup: {len(self.replay_buffer)}/{self.min_buffer_warmup} transitions...")
+            print(f"[Trainer] Buffer warmup: {len(self.replay_buffer)}/{self.min_buffer_warmup} transitions...", flush=True)
 
-        print(f"[Trainer] Replay buffer warmed up ({len(self.replay_buffer)} transitions). Starting training for {total_steps} steps...")
+        print(f"[Trainer] Replay buffer warmed up ({len(self.replay_buffer)} transitions). Starting training for {total_steps} steps...", flush=True)
         self.policy.train()
 
         running_loss = 0.0

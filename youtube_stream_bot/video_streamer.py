@@ -37,9 +37,17 @@ class YouTubeFrameStreamer:
             "-g",
             "-f", "bestvideo[height<=720][ext=mp4]/bestvideo[height<=720]/best[height<=720]",
             "--no-playlist",
+            "--no-warnings",
             youtube_url
         ]
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            timeout=30
+        )
         if proc.returncode != 0 or not proc.stdout.strip():
             raise RuntimeError(f"yt-dlp error: {proc.stderr.strip()[:200]}")
 
@@ -55,12 +63,13 @@ class YouTubeFrameStreamer:
         try:
             stream_url = self._extract_stream_url(youtube_url)
         except Exception as e:
-            print(f"[Streamer Notice] Skipping unavailable video ({youtube_url}): {e}")
+            print(f"[Streamer Notice] Skipping unavailable video ({youtube_url}): {e}", flush=True)
             return
 
         # FFmpeg subprocess piping directly to stdout (pipe:1) with no disk caching
         ffmpeg_cmd = [
             self.ffmpeg_bin,
+            "-nostdin",
             "-loglevel", "error",
             "-reconnect", "1",
             "-reconnect_streamed", "1",
@@ -74,6 +83,7 @@ class YouTubeFrameStreamer:
 
         process = subprocess.Popen(
             ffmpeg_cmd,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             bufsize=10 * self.frame_bytes
