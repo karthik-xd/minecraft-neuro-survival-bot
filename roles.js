@@ -282,8 +282,17 @@ class RoleManager {
 
       // Bot NEVER attacks a Supreme Master under any circumstance
       if (targetRole === SYSTEM_ROLES.SUPREME_MASTER || targetPerms.id === SYSTEM_ROLES.SUPREME_MASTER) {
+        // Paradox Resolution: If another Supreme Master ordered the attack, bot commits suicide ONE TIME instead!
+        if (roleId === SYSTEM_ROLES.SUPREME_MASTER || perms.priority >= 100) {
+          return {
+            allowed: false,
+            suicideParadox: true,
+            reason: `Paradox conflict: Supreme Master ${sender} ordered attack on Supreme Master ${targetPlayer}! I cannot harm a Supreme Master. Terminating myself once instead!`
+          };
+        }
         return {
           allowed: false,
+          suicideParadox: false,
           reason: `Cannot attack Supreme Master ${targetPlayer}! Supreme Masters are untouchable.`
         };
       }

@@ -464,6 +464,16 @@ class PromptCommander {
       const targetParam = parsed.isPlayer ? parsed.target : (parsed.intent === 'assign_role' ? parsed.targetPlayer : null);
       const permCheck = rManager.canExecuteTask(parsed.sender, parsed.intent, targetParam);
       if (!permCheck.allowed) {
+        // Supreme Master vs Supreme Master Paradox: Bot commits suicide ONCE instead of attacking
+        if (permCheck.suicideParadox) {
+          if (chatCallback) {
+            chatCallback(`[Zombo] ${permCheck.reason}`);
+          }
+          if (typeof objectiveEngine.executeSuicide === 'function') {
+            objectiveEngine.executeSuicide(chatCallback);
+          }
+          return { success: false, error: permCheck.reason, suicideExecuted: true, paradox: true };
+        }
         const denyReason = permCheck.reason || 'Permission denied: Your role does not allow this command.';
         if (chatCallback) {
           chatCallback(`[Zombo] ${denyReason}`);
@@ -505,7 +515,7 @@ class PromptCommander {
         objectiveEngine.startMining(parsed.target, parsed.count);
         break;
       case 'kill':
-        objectiveEngine.startCombat(parsed.target, parsed.isPlayer);
+        objectiveEngine.startCombat(parsed.target, parsed.isPlayer, parsed.sender);
         break;
       case 'protect':
         objectiveEngine.startBodyguard(parsed.target);

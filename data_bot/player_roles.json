@@ -1,18 +1,18 @@
 {
-  "updatedAt": "2026-11-05T09:38:58.268Z",
+  "updatedAt": "2026-11-05T09:52:13.592Z",
   "playerRoles": {
+    "finity_fx": "supreme-master",
     "karthik": "supreme-master",
+    "notch": "supreme-master",
     "steve": "master",
-    "alex": "sergeant",
-    "bob": "unranked",
-    "notch": "master"
+    "alex": "small master"
   },
   "playerDisplayNames": {
+    "finity_fx": "Finity_FX",
     "karthik": "Karthik",
+    "notch": "Notch",
     "steve": "Steve",
-    "alex": "Alex",
-    "bob": "Bob",
-    "notch": "notch"
+    "alex": "Alex"
   },
   "customRoles": {
     "sergeant": {

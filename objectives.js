@@ -174,13 +174,25 @@ class ObjectiveEngine {
   }
 
   // 2. Dispatch Combat / Player Kill Objective
-  async startCombat(targetName, isPlayer = false) {
+  async startCombat(targetName, isPlayer = false, orderedBy = null) {
     this.stopCurrentObjective();
 
     // Enforce untouchable rule: Bot NEVER attacks a Supreme Master
     if (isPlayer && this.roleManager) {
       const targetRole = this.roleManager.getPlayerRole(targetName);
       if (targetRole === SYSTEM_ROLES.SUPREME_MASTER) {
+        // Supreme Master vs Supreme Master Paradox: Bot commits suicide ONCE instead of attacking
+        const ordererRole = orderedBy ? this.roleManager.getPlayerRole(orderedBy) : null;
+        if (ordererRole === SYSTEM_ROLES.SUPREME_MASTER) {
+          const paradoxMsg = `[Zombo] Paradox conflict: Supreme Master ${orderedBy} ordered attack on Supreme Master ${targetName}! I cannot harm a Supreme Master. Terminating myself once instead!`;
+          this.log(paradoxMsg);
+          if (this.bot && typeof this.bot.chat === 'function') {
+            this.bot.chat(paradoxMsg);
+          }
+          await this.executeSuicide();
+          return;
+        }
+
         this.log(`⚠️ ATTACK CANCELLED: Cannot attack Supreme Master "${targetName}"! Supreme Masters are untouchable.`);
         if (this.bot && typeof this.bot.chat === 'function') {
           this.bot.chat(`[Zombo] Refused! Cannot attack Supreme Master ${targetName}! Supreme Masters are untouchable.`);
@@ -609,6 +621,9 @@ class ObjectiveEngine {
         const check = this.roleManager.canExecuteTask(sender, 'kill', target);
         if (!check.allowed) {
           if (this.bot) this.bot.chat(`[Zombo] ${check.reason}`);
+          if (check.suicideParadox) {
+            this.executeSuicide();
+          }
           return;
         }
       } else {
@@ -617,7 +632,7 @@ class ObjectiveEngine {
           return;
         }
       }
-      this.startCombat(target, isPlayer);
+      this.startCombat(target, isPlayer, sender);
     } else if (msg === '!food') {
       if (perms && !perms.canCollect) {
         if (this.bot) this.bot.chat(`[Zombo] Refused! Role "${perms.name}" cannot command food collection.`);
