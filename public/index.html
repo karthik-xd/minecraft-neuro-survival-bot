@@ -1097,24 +1097,134 @@
 
       </div>
 
-      <!-- ROLE & COMMANDER ASSIGNMENT CARD -->
-      <div class="mc-panel-dark p-3.5 space-y-2.5 border-l-4 border-l-purple-500 shadow-md">
+      <!-- ROLE-BASED ACCESS CONTROL (RBAC) & PERMISSION HIERARCHY -->
+      <div class="mc-panel-dark p-3.5 space-y-3 border-l-4 border-l-purple-500 shadow-md">
         <div class="flex items-center justify-between border-b border-stone-700 pb-2">
           <span class="text-[10px] text-purple-400 flex items-center gap-1.5 font-bold">
-            <span>👑</span> ROLE &amp; COMMANDER ASSIGNMENT
+            <span>👑</span> ROLE HIERARCHY &amp; PERMISSION SYSTEM
           </span>
           <span id="activeRoleBadge" class="px-2 py-0.5 text-[8px] bg-purple-950 text-purple-300 border border-purple-700 rounded font-bold">ROLE: AUTONOMOUS</span>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-[8px]">
-          <div>
-            <label class="block text-slate-300 mb-1">DESIGNATED COMMANDER (MASTER PLAYER):</label>
-            <select id="selectMasterPlayer" class="mc-input w-full bg-black text-amber-300">
-              <option value="">-- Any / Auto-Detect Player --</option>
-            </select>
+        <!-- Role Tier Legend -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-[7px] font-mono">
+          <div class="bg-amber-950/40 p-2 border border-amber-800 rounded">
+            <span class="text-amber-300 font-bold block text-[8px]">👑 SUPREME-MASTER (100)</span>
+            <span class="text-slate-300 block mt-0.5">• Untouchable: Bot never attacks</span>
+            <span class="text-slate-300 block">• Obey all orders, including suicide ("kill yourself")</span>
+            <span class="text-slate-300 block">• Only role allowed to assign roles in Minecraft chat</span>
           </div>
+          <div class="bg-blue-950/40 p-2 border border-blue-800 rounded">
+            <span class="text-blue-300 font-bold block text-[8px]">⚔️ MASTER (50)</span>
+            <span class="text-slate-300 block mt-0.5">• All survival, gathering &amp; mob hunting</span>
+            <span class="text-slate-300 block">• CANNOT order suicide</span>
+            <span class="text-slate-300 block">• Cannot attack Supreme-Master or other Masters</span>
+          </div>
+          <div class="bg-emerald-950/40 p-2 border border-emerald-800 rounded">
+            <span class="text-emerald-300 font-bold block text-[8px]">📦 SMALL MASTER (25)</span>
+            <span class="text-slate-300 block mt-0.5">• Collect items &amp; food for him</span>
+            <span class="text-slate-300 block">• Kill mobs &amp; limited unranked player attacks</span>
+            <span class="text-slate-300 block">• No suicide, no role assignment</span>
+          </div>
+        </div>
+
+        <!-- Assign Role to Player -->
+        <div class="bg-black/50 p-2.5 border border-stone-800 rounded space-y-2">
+          <span class="text-[8px] text-yellow-300 font-bold block">ASSIGN ROLE TO PLAYER:</span>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[8px]">
+            <div>
+              <label class="block text-slate-400 mb-0.5">SELECT / TYPE PLAYER:</label>
+              <input id="inputRolePlayer" list="datalistOnlinePlayers" type="text" placeholder="e.g. Steve" class="mc-input w-full bg-black text-amber-300" />
+              <datalist id="datalistOnlinePlayers"></datalist>
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-0.5">ASSIGN ROLE:</label>
+              <select id="selectPlayerRoleChoice" class="mc-input w-full bg-black text-purple-300 font-bold">
+                <option value="supreme-master">👑 Supreme Master (Full Obedience &amp; Suicide)</option>
+                <option value="master">⚔️ Master (Standard Tasks, No Suicide)</option>
+                <option value="small master">📦 Small Master (Collect &amp; Mobs)</option>
+              </select>
+            </div>
+            <div class="flex items-end">
+              <button onclick="submitAssignPlayerRole()" class="mc-btn mc-btn-green w-full text-[8px] py-1.5 font-bold">
+                👑 ASSIGN ROLE
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Active Player Roles Table -->
+        <div class="space-y-1">
+          <span class="text-[8px] text-slate-400 font-bold block">ACTIVE PLAYER ROLES &amp; PERMISSIONS:</span>
+          <div id="playerRolesTableContainer" class="max-h-36 overflow-y-auto space-y-1 text-[7px] font-mono">
+            <div class="text-slate-500 italic p-1">Loading assigned roles...</div>
+          </div>
+        </div>
+
+        <!-- Custom Role & Permission Builder (UI ONLY) -->
+        <details class="bg-black/40 border border-stone-800 rounded p-2 text-[8px]">
+          <summary class="font-bold text-cyan-300 cursor-pointer flex items-center justify-between">
+            <span>🛠️ CUSTOM ROLE &amp; PERMISSION BUILDER (UI ONLY)</span>
+            <span class="text-[7px] text-slate-500">Click to expand</span>
+          </summary>
+          <div class="space-y-2 mt-2 pt-2 border-t border-stone-800">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[8px]">
+              <div>
+                <label class="block text-slate-400 mb-0.5">ROLE KEY (ID):</label>
+                <input id="customRoleKey" type="text" placeholder="e.g. sergeant" class="mc-input w-full bg-black text-white" />
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-0.5">DISPLAY NAME:</label>
+                <input id="customRoleName" type="text" placeholder="e.g. Sergeant" class="mc-input w-full bg-black text-yellow-300" />
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-0.5">PRIORITY (1-99):</label>
+                <input id="customRolePriority" type="number" min="1" max="99" value="30" class="mc-input w-full bg-black text-white" />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[7px] font-mono p-2 bg-black/60 border border-stone-850 rounded">
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input id="permSuicide" type="checkbox" class="accent-purple-500" />
+                <span class="text-red-400 font-bold">Can Order Suicide</span>
+              </label>
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input id="permKillMobs" type="checkbox" checked class="accent-purple-500" />
+                <span>Can Hunt Mobs</span>
+              </label>
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input id="permCollect" type="checkbox" checked class="accent-purple-500" />
+                <span>Can Order Collect/Mine</span>
+              </label>
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input id="permBuildCraft" type="checkbox" class="accent-purple-500" />
+                <span>Can Order Craft/Build</span>
+              </label>
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input id="permNavigate" type="checkbox" checked class="accent-purple-500" />
+                <span>Can Order Follow/Goto</span>
+              </label>
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input id="permAssignRoles" type="checkbox" class="accent-purple-500" />
+                <span>Can Assign Roles</span>
+              </label>
+            </div>
+
+            <div class="flex justify-between items-center pt-1">
+              <span class="text-[7px] text-slate-500">Custom permissions can ONLY be configured via this UI.</span>
+              <button onclick="submitCreateCustomRole()" class="mc-btn mc-btn-blue text-[8px] px-3 py-1 font-bold">
+                ➕ SAVE CUSTOM ROLE
+              </button>
+            </div>
+
+            <div id="customRolesListContainer" class="pt-2 border-t border-stone-850 space-y-1"></div>
+          </div>
+        </details>
+
+        <!-- Bot Autonomous Role Selector -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-[8px] pt-1 border-t border-stone-800">
           <div>
-            <label class="block text-slate-300 mb-1">SELECT BOT'S ACTIVE ROLE:</label>
+            <label class="block text-slate-300 mb-1">SELECT BOT'S BEHAVIOR PATTERN:</label>
             <select id="selectBotRole" class="mc-input w-full bg-black text-purple-300 font-bold">
               <option value="autonomous">🤖 Autonomous Survival (Neuro Brain)</option>
               <option value="bodyguard">🛡️ Bodyguard (Protect &amp; Escort Master)</option>
@@ -1126,15 +1236,14 @@
               <option value="hunter">⚔️ Hunter / Assassin (Eliminate Target)</option>
             </select>
           </div>
-        </div>
-
-        <div class="flex gap-2 pt-1">
-          <button id="btnAssignRole" onclick="assignBotRole()" class="mc-btn mc-btn-green flex-1 text-[9px] py-1.5 font-bold">
-            👑 ASSIGN ROLE &amp; MASTER
-          </button>
-          <button id="btnHaltObjective" onclick="stopCurrentObjective()" class="mc-btn mc-btn-red text-[9px] px-3 py-1.5">
-            ⏹️ HALT BOT
-          </button>
+          <div class="flex items-end gap-2">
+            <button id="btnAssignRole" onclick="assignBotRole()" class="mc-btn mc-btn-green flex-1 text-[8px] py-1.5 font-bold">
+              🤖 SET BOT BEHAVIOR
+            </button>
+            <button id="btnHaltObjective" onclick="stopCurrentObjective()" class="mc-btn mc-btn-red text-[8px] px-3 py-1.5">
+              ⏹️ HALT
+            </button>
+          </div>
         </div>
       </div>
 
@@ -3063,6 +3172,184 @@
       }
     }
 
+    // ===== ROLE & PERMISSION SYSTEM (RBAC) =====
+    async function loadPlayerRoles() {
+      try {
+        const res = await fetch('/api/roles');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // 1. Datalist of online players
+        const datalist = document.getElementById('datalistOnlinePlayers');
+        if (datalist && data.onlinePlayers) {
+          datalist.innerHTML = data.onlinePlayers.map(p => `<option value="${p}">`).join('');
+        }
+
+        // 2. Populate role select options (system + custom)
+        const roleSel = document.getElementById('selectPlayerRoleChoice');
+        if (roleSel) {
+          let opts = `
+            <option value="supreme-master">👑 Supreme Master (Full Obedience &amp; Suicide)</option>
+            <option value="master">⚔️ Master (Standard Tasks, No Suicide)</option>
+            <option value="small master">📦 Small Master (Collect &amp; Mobs)</option>
+          `;
+          if (data.customRoles) {
+            for (const [k, cr] of Object.entries(data.customRoles)) {
+              opts += `<option value="${k}">🛠️ ${cr.name} (Priority: ${cr.priority})</option>`;
+            }
+          }
+          roleSel.innerHTML = opts;
+        }
+
+        // 3. Render assigned players table
+        const table = document.getElementById('playerRolesTableContainer');
+        if (table) {
+          if (!data.playerRoles || !data.playerRoles.length) {
+            table.innerHTML = '<div class="text-stone-500 italic p-1.5">No players assigned yet. Type your username above and assign as Supreme Master!</div>';
+          } else {
+            table.innerHTML = data.playerRoles.map(p => {
+              const isSupreme = p.roleId === 'supreme-master';
+              const isMaster = p.roleId === 'master';
+              const badgeClass = isSupreme
+                ? 'bg-amber-950 text-amber-300 border-amber-600'
+                : (isMaster ? 'bg-blue-950 text-blue-300 border-blue-600' : 'bg-emerald-950 text-emerald-300 border-emerald-600');
+              const permsSummary = isSupreme ? 'FULL OBEDIENCE • CAN SUICIDE • CHAT ASSIGN' : (isMaster ? 'STANDARD TASKS • NO SUICIDE • SUPERIOR IMMUNE' : 'COLLECT ITEMS • MOBS');
+
+              return `
+                <div class="flex items-center justify-between p-1.5 bg-black/70 border border-stone-850 rounded">
+                  <div class="flex items-center gap-2">
+                    <span class="text-white font-bold">${p.username}</span>
+                    <span class="px-1.5 py-0.5 text-[6px] border rounded font-bold ${badgeClass}">${p.roleName.toUpperCase()} (${p.priority})</span>
+                    <span class="text-slate-500 text-[6px] hidden sm:inline">${permsSummary}</span>
+                  </div>
+                  <button onclick="unassignPlayerRole('${p.username}')" class="px-1.5 py-0.5 bg-red-950 hover:bg-red-800 text-red-300 border border-red-800 rounded text-[6px]">
+                    ✖ Remove
+                  </button>
+                </div>
+              `;
+            }).join('');
+          }
+        }
+
+        // 4. Render custom roles list
+        const crContainer = document.getElementById('customRolesListContainer');
+        if (crContainer) {
+          const keys = Object.keys(data.customRoles || {});
+          if (!keys.length) {
+            crContainer.innerHTML = '<div class="text-slate-600 italic text-[7px]">No custom roles created. Create one above!</div>';
+          } else {
+            crContainer.innerHTML = keys.map(k => {
+              const r = data.customRoles[k];
+              return `
+                <div class="flex items-center justify-between p-1 bg-stone-900/60 border border-stone-800 rounded text-[7px] font-mono">
+                  <div>
+                    <span class="text-cyan-300 font-bold">${r.name}</span>
+                    <span class="text-slate-500 ml-1">Priority: ${r.priority}</span>
+                    <span class="text-slate-400 ml-1">• ${r.canSuicide ? '⚠️ Suicide' : ''} ${r.canCollect ? 'Collect' : ''} ${r.canKillMobs ? 'Mobs' : ''}</span>
+                  </div>
+                  <button onclick="deleteCustomRole('${k}')" class="text-red-400 hover:text-red-300 px-1">Delete</button>
+                </div>
+              `;
+            }).join('');
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load roles:', err);
+      }
+    }
+
+    async function submitAssignPlayerRole() {
+      const player = document.getElementById('inputRolePlayer').value.trim();
+      const role = document.getElementById('selectPlayerRoleChoice').value;
+      if (!player) {
+        alert('Please enter or select a player username.');
+        return;
+      }
+      try {
+        const res = await fetch('/api/roles/assign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ player, role })
+        });
+        const data = await res.json();
+        if (data.success) {
+          appendLog(`👑 [ROLE ASSIGNED] Player "${player}" is now ${data.roleName}!`);
+          document.getElementById('inputRolePlayer').value = '';
+          loadPlayerRoles();
+        } else {
+          alert('Error assigning role: ' + (data.error || 'Failed'));
+        }
+      } catch (e) {
+        alert('Failed to connect to server: ' + e.message);
+      }
+    }
+
+    async function unassignPlayerRole(player) {
+      if (!confirm(`Remove role from player "${player}"?`)) return;
+      try {
+        await fetch('/api/roles/unassign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ player })
+        });
+        loadPlayerRoles();
+      } catch (e) {
+        alert(e.message);
+      }
+    }
+
+    async function submitCreateCustomRole() {
+      const roleKey = document.getElementById('customRoleKey').value.trim();
+      const name = document.getElementById('customRoleName').value.trim() || roleKey;
+      const priority = parseInt(document.getElementById('customRolePriority').value, 10) || 30;
+
+      if (!roleKey) {
+        alert('Please enter a role key (e.g. "sergeant").');
+        return;
+      }
+
+      const payload = {
+        roleKey,
+        name,
+        priority,
+        canSuicide: document.getElementById('permSuicide').checked,
+        canKillMobs: document.getElementById('permKillMobs').checked,
+        canCollect: document.getElementById('permCollect').checked,
+        canBuildCraft: document.getElementById('permBuildCraft').checked,
+        canNavigate: document.getElementById('permNavigate').checked,
+        canAssignRoles: document.getElementById('permAssignRoles').checked
+      };
+
+      try {
+        const res = await fetch('/api/roles/custom', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          appendLog(`🛠️ [CUSTOM ROLE] Created role "${name}"!`);
+          document.getElementById('customRoleKey').value = '';
+          document.getElementById('customRoleName').value = '';
+          loadPlayerRoles();
+        } else {
+          alert('Error: ' + data.error);
+        }
+      } catch (e) {
+        alert(e.message);
+      }
+    }
+
+    async function deleteCustomRole(roleKey) {
+      if (!confirm(`Delete custom role "${roleKey}"?`)) return;
+      try {
+        await fetch(`/api/roles/custom?key=${encodeURIComponent(roleKey)}`, { method: 'DELETE' });
+        loadPlayerRoles();
+      } catch (e) {
+        alert(e.message);
+      }
+    }
+
     // ===== ROLE & COMMANDER ASSIGNMENT =====
     function populateCommanderSelect(players = []) {
       const sel = document.getElementById('selectMasterPlayer');
@@ -4278,6 +4565,7 @@
         loadBrainReport();
       }
       if (pageId === 'commander') {
+        loadPlayerRoles();
         setTimeout(() => {
           const inp = document.getElementById('promptInput');
           if (inp) inp.focus();

@@ -1,0 +1,34 @@
+{
+  "updatedAt": "2026-11-05T09:38:58.268Z",
+  "playerRoles": {
+    "karthik": "supreme-master",
+    "steve": "master",
+    "alex": "sergeant",
+    "bob": "unranked",
+    "notch": "master"
+  },
+  "playerDisplayNames": {
+    "karthik": "Karthik",
+    "steve": "Steve",
+    "alex": "Alex",
+    "bob": "Bob",
+    "notch": "notch"
+  },
+  "customRoles": {
+    "sergeant": {
+      "id": "sergeant",
+      "name": "Sergeant",
+      "priority": 35,
+      "canSuicide": false,
+      "canKillPlayers": false,
+      "canKillMobs": true,
+      "canCollect": true,
+      "canBuildCraft": false,
+      "canAssignRoles": false,
+      "canNavigate": true,
+      "canStop": true,
+      "immuneToAttack": false,
+      "description": "Custom role created via Web UI."
+    }
+  }
+}

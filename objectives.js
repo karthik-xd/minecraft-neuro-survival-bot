@@ -6,6 +6,8 @@
 const { goals, Movements } = require('mineflayer-pathfinder');
 const { GoalNear, GoalBlock, GoalFollow, GoalXZ } = goals;
 const { PromptCommander } = require('./prompt_commander');
+const { RoleManager, SYSTEM_ROLES } = require('./roles');
+const path = require('path');
 
 const ROLES = {
   BODYGUARD: 'bodyguard',
@@ -28,10 +30,13 @@ class ObjectiveEngine {
     this.currentRole = ROLES.AUTONOMOUS;
     this.masterPlayer = null; // Assigned Commander from Web UI
 
+    const dataDir = (knowledgeEngine && knowledgeEngine.dataDir) || path.join(__dirname, 'data_bot');
+    this.roleManager = new RoleManager(dataDir);
+
     this.activeObjective = null;
     this.objectiveInterval = null;
     this.isExecuting = false;
-    this.promptCommander = new PromptCommander(bot.username || 'Zombo', chestMemory);
+    this.promptCommander = new PromptCommander(bot.username || 'Zombo', chestMemory, this.roleManager);
 
     // Default movements config
     this.movements = null;
@@ -171,6 +176,19 @@ class ObjectiveEngine {
   // 2. Dispatch Combat / Player Kill Objective
   async startCombat(targetName, isPlayer = false) {
     this.stopCurrentObjective();
+
+    // Enforce untouchable rule: Bot NEVER attacks a Supreme Master
+    if (isPlayer && this.roleManager) {
+      const targetRole = this.roleManager.getPlayerRole(targetName);
+      if (targetRole === SYSTEM_ROLES.SUPREME_MASTER) {
+        this.log(`⚠️ ATTACK CANCELLED: Cannot attack Supreme Master "${targetName}"! Supreme Masters are untouchable.`);
+        if (this.bot && typeof this.bot.chat === 'function') {
+          this.bot.chat(`[Zombo] Refused! Cannot attack Supreme Master ${targetName}! Supreme Masters are untouchable.`);
+        }
+        return;
+      }
+    }
+
     this.activeObjective = {
       type: isPlayer ? 'kill_player' : 'kill_mob',
       target: targetName,
@@ -498,14 +516,61 @@ class ObjectiveEngine {
     }, 2000);
   }
 
-  // Handle in-game chat commands from Commander/Master player (Natural English Prompts & Legacy ! Commands)
-  handleChatCommand(sender, message) {
-    if (this.masterPlayer && sender !== this.masterPlayer) {
-      return;
+  // Suicide execution protocol (Only authorized for Supreme Master)
+  async executeSuicide(chatCallback = null) {
+    this.stopCurrentObjective();
+    this.activeObjective = {
+      type: 'suicide',
+      status: 'TERMINATING LIFE FUNCTIONS'
+    };
+    this.log(`🚨 SUPREME MASTER SUICIDE COMMAND ACCEPTED. Terminating bot life functions...`);
+
+    const goodbyeMsg = `[Zombo] Obeying Supreme Master command to terminate myself. Farewell!`;
+    if (chatCallback) chatCallback(goodbyeMsg);
+    if (this.bot && typeof this.bot.chat === 'function') {
+      try { this.bot.chat(goodbyeMsg); } catch {}
     }
 
+    // 1. Try server operator kill command
+    try {
+      this.bot.chat('/kill');
+      this.bot.chat('/kill @s');
+    } catch {}
+
+    // 2. Physical survival suicide maneuvers:
+    // Unequip all armor to eliminate damage absorption
+    try {
+      if (this.bot.inventory) {
+        for (const slot of ['head', 'torso', 'legs', 'feet', 'off-hand']) {
+          try { await this.bot.unequip(slot); } catch {}
+        }
+      }
+    } catch {}
+
+    // Find lethal hazard (lava, fire, deep water) or jump off cliff
+    try {
+      const hazard = this.bot.findBlock({
+        matching: (b) => b && (b.name === 'lava' || b.name === 'flowing_lava' || b.name === 'fire'),
+        maxDistance: 16
+      });
+
+      if (hazard) {
+        this.bot.pathfinder.setGoal(new GoalBlock(hazard.position.x, hazard.position.y, hazard.position.z));
+      } else {
+        // Jump repeatedly / sprint into void/fall
+        this.bot.setControlState('jump', true);
+        this.bot.setControlState('forward', true);
+        this.bot.setControlState('sprint', true);
+      }
+    } catch {}
+  }
+
+  // Handle in-game chat commands from players with Role & Permission Enforcement
+  handleChatCommand(sender, message) {
     const onlinePlayerNames = this.bot && this.bot.players ? Object.keys(this.bot.players) : [];
     const botName = (this.bot && this.bot.username) || 'Zombo';
+
+    // Parse natural language command
     const parsed = this.promptCommander.parsePrompt(message, botName, sender, onlinePlayerNames);
 
     if (parsed.success) {
@@ -513,35 +578,78 @@ class ObjectiveEngine {
         if (this.bot && typeof this.bot.chat === 'function') {
           this.bot.chat(replyMsg);
         }
-      });
+      }, this.roleManager);
       return;
     }
 
-    // Fallback to legacy ! commands
+    // Fallback to legacy ! commands with role permission check
     const msg = message.trim();
+    const role = this.roleManager ? this.roleManager.getPlayerRole(sender) : SYSTEM_ROLES.UNRANKED;
+    const perms = this.roleManager ? this.roleManager.getPlayerPermissions(sender) : null;
+
     if (msg === '!follow' || msg === '!protect') {
+      if (perms && !perms.canNavigate) {
+        if (this.bot) this.bot.chat(`[Zombo] Refused! Role "${perms.name}" cannot command follow.`);
+        return;
+      }
       this.startBodyguard(sender);
     } else if (msg.startsWith('!mine ')) {
+      if (perms && !perms.canCollect) {
+        if (this.bot) this.bot.chat(`[Zombo] Refused! Role "${perms.name}" cannot command mining.`);
+        return;
+      }
       const parts = msg.split(' ');
       const block = parts[1] || 'iron_ore';
       const count = parseInt(parts[2] || '10', 10);
       this.startMining(block, count);
     } else if (msg.startsWith('!kill ')) {
       const target = msg.replace('!kill ', '').trim();
-      const isPlayer = !!this.bot.players[target];
+      const isPlayer = !!(this.bot.players && this.bot.players[target]);
+      if (isPlayer) {
+        const check = this.roleManager.canExecuteTask(sender, 'kill', target);
+        if (!check.allowed) {
+          if (this.bot) this.bot.chat(`[Zombo] ${check.reason}`);
+          return;
+        }
+      } else {
+        if (perms && !perms.canKillMobs) {
+          if (this.bot) this.bot.chat(`[Zombo] Refused! Role "${perms.name}" cannot command mob attacks.`);
+          return;
+        }
+      }
       this.startCombat(target, isPlayer);
     } else if (msg === '!food') {
+      if (perms && !perms.canCollect) {
+        if (this.bot) this.bot.chat(`[Zombo] Refused! Role "${perms.name}" cannot command food collection.`);
+        return;
+      }
       this.startCollectFood();
     } else if (msg === '!farm') {
+      if (perms && !perms.canBuildCraft) {
+        if (this.bot) this.bot.chat(`[Zombo] Refused! Role "${perms.name}" cannot command farming.`);
+        return;
+      }
       this.startFarming();
     } else if (msg === '!village') {
+      if (perms && !perms.canNavigate) {
+        if (this.bot) this.bot.chat(`[Zombo] Refused! Role "${perms.name}" cannot command exploration.`);
+        return;
+      }
       this.startFindVillage();
     } else if (msg.startsWith('!goto ')) {
+      if (perms && !perms.canNavigate) {
+        if (this.bot) this.bot.chat(`[Zombo] Refused! Role "${perms.name}" cannot command navigation.`);
+        return;
+      }
       const parts = msg.split(' ');
       if (parts.length >= 4) {
         this.startGoTo(+parts[1], +parts[2], +parts[3]);
       }
     } else if (msg === '!stop') {
+      if (perms && !perms.canStop) {
+        if (this.bot) this.bot.chat(`[Zombo] Refused! Role "${perms.name}" cannot stop bot missions.`);
+        return;
+      }
       this.stopCurrentObjective();
     }
   }

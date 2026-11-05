@@ -155,12 +155,44 @@ class PromptCommander {
 
     // 2. Intent matching
 
+    // A0. SUICIDE / TERMINATE BOT (Supreme Master only)
+    if (/\b(kill\s+(your\s*self|ur\s*self|self)|commit\s+suicide|die\b|suicide\b|end\s+your\s+life|terminate\s+your\s*self|destroy\s+your\s*self|drown\s+your\s*self|jump\s+off\s+(a\s+)?cliff|take\s+your\s+(own\s+)?life)\b/i.test(cleanText)) {
+      return {
+        success: true,
+        intent: 'suicide',
+        sender,
+        rawPrompt: original,
+        displayName: 'Terminate Self (Suicide Protocol)',
+        reply: 'Executing self-termination command...',
+        confidence: 0.99
+      };
+    }
+
+    // A1. ROLE ASSIGNMENT IN CHAT (Supreme Master only)
+    const roleAssignMatch = cleanText.match(/\b(?:make|set|assign|promote|grant)\s+(?:player\s+)?([a-zA-Z0-9_]+)\s+(?:as\s+|to\s+)?(supreme[- ]?master|master|small[- ]?master|[a-zA-Z0-9_-]+)\b/i);
+    if (roleAssignMatch) {
+      const targetPlayer = roleAssignMatch[1];
+      const targetRole = roleAssignMatch[2].toLowerCase().replace(/[-_]/g, ' ');
+      return {
+        success: true,
+        intent: 'assign_role',
+        sender,
+        targetPlayer,
+        targetRole,
+        rawPrompt: original,
+        displayName: `Assign Role "${targetRole}" to ${targetPlayer}`,
+        reply: `Setting role "${targetRole}" for player ${targetPlayer}...`,
+        confidence: 0.98
+      };
+    }
+
     // A. STOP / CANCEL
     if (/^(stop|halt|cancel|freeze|hold\s*on|wait\s*here|stay\s*here|idle)$/i.test(cleanText) ||
         /\b(stop\s+all|stop\s+everything|stop\s+it|cancel\s+mission)\b/i.test(cleanText)) {
       return {
         success: true,
         intent: 'stop',
+        sender,
         rawPrompt: original,
         displayName: 'Stop All Actions',
         reply: `Stopping current mission! Standing by for orders.`,
@@ -174,6 +206,7 @@ class PromptCommander {
       return {
         success: true,
         intent: 'protect',
+        sender,
         rawPrompt: original,
         target,
         displayName: `Protect & Follow ${target}`,
@@ -204,6 +237,7 @@ class PromptCommander {
       return {
         success: true,
         intent: 'chest_query',
+        sender,
         rawPrompt: original,
         itemQuery: itemQuery || null,
         displayName: itemQuery ? `Locate ${itemQuery} in Chest Memory` : `Query Known Chest Network`,
@@ -232,6 +266,7 @@ class PromptCommander {
       return {
         success: true,
         intent: 'mine',
+        sender,
         rawPrompt: original,
         target: targetBlock,
         count,
@@ -277,6 +312,7 @@ class PromptCommander {
       return {
         success: true,
         intent: 'kill',
+        sender,
         rawPrompt: original,
         target,
         isPlayer,
@@ -292,6 +328,7 @@ class PromptCommander {
       return {
         success: true,
         intent: 'food',
+        sender,
         rawPrompt: original,
         displayName: 'Collect & Cook Food Rations',
         reply: `Hunting animal sustenance and collecting food for the rations stockpile!`,
@@ -304,6 +341,7 @@ class PromptCommander {
       return {
         success: true,
         intent: 'farm',
+        sender,
         rawPrompt: original,
         displayName: 'Establish Wheat Farm & Harvest Crops',
         reply: `Setting up agriculture! Tilling soil, planting seeds, and harvesting crops!`,
@@ -316,6 +354,7 @@ class PromptCommander {
       return {
         success: true,
         intent: 'build',
+        sender,
         structure: 'shelter',
         rawPrompt: original,
         displayName: 'Construct Survival Shelter',
@@ -333,6 +372,7 @@ class PromptCommander {
       return {
         success: true,
         intent: 'goto',
+        sender,
         rawPrompt: original,
         x, y, z,
         displayName: `Navigate to [X: ${x}, Y: ${y}, Z: ${z}]`,
@@ -346,6 +386,7 @@ class PromptCommander {
       return {
         success: true,
         intent: 'find_village',
+        sender,
         rawPrompt: original,
         displayName: 'Explore World for Village',
         reply: `Scouting terrain and searching for nearby NPC villages!`,
@@ -369,6 +410,7 @@ class PromptCommander {
       return {
         success: true,
         intent: 'craft',
+        sender,
         rawPrompt: original,
         item: craftItem,
         count,
@@ -403,8 +445,8 @@ class PromptCommander {
     };
   }
 
-  // Execute the parsed command on active ObjectiveEngine
-  executeCommand(parsed, objectiveEngine, chatCallback = null) {
+  // Execute the parsed command on active ObjectiveEngine with Role & Permission Enforcement
+  executeCommand(parsed, objectiveEngine, chatCallback = null, roleManager = null) {
     if (!parsed || !parsed.success) {
       if (chatCallback && parsed?.error) {
         chatCallback(`[Zombo] ${parsed.error}`);
@@ -414,6 +456,44 @@ class PromptCommander {
 
     if (!objectiveEngine) {
       return { success: false, error: 'Survival Bot Objective Engine is offline. Spawn bot first!' };
+    }
+
+    // Role & Permission Access Control
+    const rManager = roleManager || objectiveEngine.roleManager;
+    if (rManager && parsed.sender) {
+      const targetParam = parsed.isPlayer ? parsed.target : (parsed.intent === 'assign_role' ? parsed.targetPlayer : null);
+      const permCheck = rManager.canExecuteTask(parsed.sender, parsed.intent, targetParam);
+      if (!permCheck.allowed) {
+        const denyReason = permCheck.reason || 'Permission denied: Your role does not allow this command.';
+        if (chatCallback) {
+          chatCallback(`[Zombo] ${denyReason}`);
+        }
+        return { success: false, error: denyReason, permissionDenied: true };
+      }
+    }
+
+    // Special Intent: Suicide / Self-Termination
+    if (parsed.intent === 'suicide') {
+      if (typeof objectiveEngine.executeSuicide === 'function') {
+        objectiveEngine.executeSuicide(chatCallback);
+        return { success: true, intent: 'suicide', message: 'Executed self-termination command.' };
+      }
+    }
+
+    // Special Intent: In-Game Role Assignment (Supreme Master)
+    if (parsed.intent === 'assign_role') {
+      if (rManager) {
+        const assignRes = rManager.setPlayerRole(parsed.targetPlayer, parsed.targetRole, parsed.sender, false);
+        if (assignRes.success) {
+          const successMsg = `👑 Granted role "${assignRes.roleName}" (Priority: ${assignRes.priority}) to player ${assignRes.player}!`;
+          if (chatCallback) chatCallback(`[Zombo] ${successMsg}`);
+          return { success: true, message: successMsg, data: assignRes };
+        } else {
+          const failMsg = `Permission error: ${assignRes.error}`;
+          if (chatCallback) chatCallback(`[Zombo] ${failMsg}`);
+          return { success: false, error: assignRes.error };
+        }
+      }
     }
 
     if (chatCallback && parsed.reply) {

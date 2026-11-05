@@ -16,9 +16,11 @@ const { MinecraftKnowledgeEngine } = require('./knowledge');
 const { TreeEngine } = require('./tree_engine');
 const { PromptCommander } = require('./prompt_commander');
 const { ChestMemoryEngine } = require('./chest_memory');
+const { RoleManager, SYSTEM_ROLES } = require('./roles');
 const knowledgeEngine = new MinecraftKnowledgeEngine('1.20.1');
 const chestMemoryEngine = new ChestMemoryEngine(path.join(__dirname, 'data_bot'));
-const promptCommander = new PromptCommander('Zombo', chestMemoryEngine);
+const roleManager = new RoleManager(path.join(__dirname, 'data_bot'));
+const promptCommander = new PromptCommander('Zombo', chestMemoryEngine, roleManager);
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const VIEWER_PORT = parseInt(process.env.VIEWER_PORT || '3007', 10);
@@ -516,6 +518,101 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // 8c0. Role & Permission Management API (Supreme-Master, Master, Small Master, Custom Roles)
+  if (pathname === '/api/roles' && req.method === 'GET') {
+    const snapshot = roleManager.getStateSnapshot();
+    snapshot.onlinePlayers = (activeBot && activeBot.bot && activeBot.bot.players) ? Object.keys(activeBot.bot.players) : [];
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(snapshot));
+    return;
+  }
+
+  if (pathname === '/api/roles/assign' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body || '{}');
+        const resData = roleManager.setPlayerRole(data.player, data.role, null, true);
+        if (resData.success) {
+          if (data.role === SYSTEM_ROLES.SUPREME_MASTER || data.role === SYSTEM_ROLES.MASTER) {
+            if (activeBot && activeBot.objectives) {
+              activeBot.objectives.setMaster(data.player);
+            }
+          }
+          latestTelemetry.recentLogs.push(`[ROLE ASSIGNED] Player "${data.player}" -> ${data.role.toUpperCase()}`);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(resData));
+        } else {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(resData));
+        }
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+    return;
+  }
+
+  if (pathname === '/api/roles/unassign' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body || '{}');
+        const resData = roleManager.removePlayerRole(data.player);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(resData));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+    return;
+  }
+
+  if (pathname === '/api/roles/custom' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body || '{}');
+        const resData = roleManager.createCustomRole(data.roleKey, data);
+        if (resData.success) {
+          latestTelemetry.recentLogs.push(`[CUSTOM ROLE] Created role "${data.name || data.roleKey}" (Priority: ${data.priority || 30})`);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(resData));
+        } else {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(resData));
+        }
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+    return;
+  }
+
+  if (pathname === '/api/roles/custom' && req.method === 'DELETE') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const parsedUrl = url.parse(req.url, true);
+        const roleKey = parsedUrl.query.key || (JSON.parse(body || '{}').roleKey);
+        const resData = roleManager.deleteCustomRole(roleKey);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(resData));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+    return;
+  }
+
   // 8c1. Bot Role & Master Commander Assignment
   if (pathname === '/api/bot/role' && req.method === 'POST') {
     let body = '';
@@ -630,7 +727,7 @@ const server = http.createServer((req, res) => {
           if (activeBot && activeBot.bot && typeof activeBot.bot.chat === 'function') {
             try { activeBot.bot.chat(chatMsg); } catch {}
           }
-        });
+        }, roleManager);
 
         latestTelemetry.recentLogs.push(`[AI PROMPT] "${rawPrompt}" -> ${parsed.displayName}`);
         latestTelemetry.recentLogs.push(`[ZOMBO SPEECH] "${parsed.reply}"`);
