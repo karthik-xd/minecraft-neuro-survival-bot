@@ -1011,6 +1011,12 @@ const server = http.createServer((req, res) => {
       return;
     }
 
+    if (!youtubeQueue || youtubeQueue.length === 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Queue is empty. Please enqueue a YouTube video URL first before starting learning.' }));
+      return;
+    }
+
     try {
       latestTelemetry.recentLogs.push('[YOUTUBE BOT] Spawning Python In-Memory Stream & Imitation Pipeline...');
       youtubeTelemetry.isRunning = true;

@@ -1784,13 +1784,10 @@
               </div>
             </div>
 
-            <!-- Quick Presets -->
-            <div class="flex gap-1 flex-wrap">
-              <button onclick="setYtPreset('https://www.youtube.com/watch?v=dQw4w9WgXcQ')" class="text-[7px] px-1.5 py-0.5 bg-stone-900 hover:bg-stone-800 border border-stone-700 text-slate-300 rounded">
-                ⚡ Sample Minecraft Video
-              </button>
-              <button onclick="clearYtInput()" class="text-[7px] px-1.5 py-0.5 bg-stone-900 hover:bg-stone-800 border border-stone-700 text-stone-500 rounded">
-                Clear
+            <!-- Input Controls -->
+            <div class="flex justify-end pt-0.5">
+              <button onclick="clearYtInput()" class="text-[7px] px-2 py-0.5 bg-stone-900 hover:bg-stone-800 border border-stone-700 text-stone-400 rounded">
+                Clear Input
               </button>
             </div>
 
@@ -3806,10 +3803,6 @@
     setInterval(loadBrainReport, 15000);
 
     // ===== YOUTUBE IN-MEMORY STREAM LEARNING CONTROLS =====
-    function setYtPreset(url) {
-      document.getElementById('ytUrlInput').value = url;
-    }
-
     function clearYtInput() {
       document.getElementById('ytUrlInput').value = '';
     }
@@ -3880,13 +3873,24 @@
     });
 
     document.getElementById('btnYtStart').addEventListener('click', async () => {
+      const qCount = window.latestYtTelemetry && window.latestYtTelemetry.queue ? window.latestYtTelemetry.queue.length : 0;
+      if (qCount === 0) {
+        alert('Cannot start learning: Queue is empty!\nPlease paste and enqueue a YouTube video URL above first.');
+        return;
+      }
       appendLog('[YOUTUBE BOT] Launching in-memory streaming & imitation learning pipeline...');
       document.getElementById('btnYtStart').disabled = true;
       document.getElementById('btnYtStop').disabled = false;
       try {
         const res = await fetch('/api/youtube/start', { method: 'POST' });
         const data = await res.json();
-        appendLog(`[YOUTUBE BOT] ${data.message || data.error}`);
+        if (data.error) {
+          alert(data.error);
+          document.getElementById('btnYtStart').disabled = false;
+          document.getElementById('btnYtStop').disabled = true;
+        } else {
+          appendLog(`[YOUTUBE BOT] ${data.message || 'Pipeline started'}`);
+        }
       } catch (err) {
         appendLog(`[YOUTUBE ERROR] ${err.message}`);
         document.getElementById('btnYtStart').disabled = false;

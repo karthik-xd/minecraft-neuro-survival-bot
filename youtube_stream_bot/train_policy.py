@@ -213,11 +213,18 @@ class StreamingTrainer:
         """
         Main training loop. Uniformly samples uncorrelated random mini-batches from the Replay Buffer.
         """
-        print("[Trainer] Waiting for replay buffer warmup...", flush=True)
+        print("[Trainer] Waiting for video stream & replay buffer warmup...", flush=True)
+        idle_announced = False
         while len(self.replay_buffer) < self.min_buffer_warmup:
             if self.stop_signal.is_set():
                 return
             time.sleep(1.0)
+            if self.queue_mgr.remaining() == 0 and len(self.replay_buffer) == 0:
+                if not idle_announced:
+                    print("[Trainer] Link queue empty. Waiting for user to enqueue YouTube links...", flush=True)
+                    idle_announced = True
+                continue
+            idle_announced = False
             print(f"[Trainer] Buffer warmup: {len(self.replay_buffer)}/{self.min_buffer_warmup} transitions...", flush=True)
 
         print(f"[Trainer] Replay buffer warmed up ({len(self.replay_buffer)} transitions). Starting training for {total_steps} steps...", flush=True)
@@ -338,9 +345,7 @@ if __name__ == "__main__":
             trainer.queue_mgr.add_link(clean_lk)
 
     if trainer.queue_mgr.remaining() == 0:
-        print("[Info] No initial links passed. Adding example high-quality Minecraft video to queue...")
-        # A standard public Minecraft gameplay stream link
-        trainer.queue_mgr.add_link("https://youtu.be/HSwGH710EgA")
+        print("[Info] Link queue empty. Waiting for user to enqueue YouTube links via UI or CLI...", flush=True)
 
     # Start background streaming producer thread
     producer_thread = threading.Thread(target=trainer.stream_producer_loop, daemon=True)
