@@ -4109,8 +4109,6 @@
         if (vSpeedEl) vSpeedEl.innerText = `${(data.speedFps || 0).toFixed(1)} FPS (${(data.speedFactor || 1.0).toFixed(1)}x)`;
 
         // 2. Whole Set / Queue Game-Style Progress Bar
-        const qIdx = data.queueIndex || 1;
-        const qTot = data.queueTotal || (data.queue ? data.queue.length : 1);
         const setSubEl = document.getElementById('ytSetSubtext');
         if (setSubEl) setSubEl.innerText = `Video ${qIdx} of ${qTot}`;
 
