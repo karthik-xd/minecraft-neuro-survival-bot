@@ -15,8 +15,13 @@ class LinkQueueManager:
 
     def add_link(self, url: str) -> None:
         """Add a YouTube URL to the queue (can be called concurrently from any thread)."""
-        url = url.strip()
         if not url:
+            return
+        url = url.strip().strip('"\'')
+        # Skip empty lines, comments, and invalid URLs
+        if not url or url.startswith("#"):
+            return
+        if not (url.startswith("http://") or url.startswith("https://")):
             return
         with self._lock:
             self._queue.put(url)

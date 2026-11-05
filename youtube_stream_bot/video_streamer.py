@@ -29,6 +29,9 @@ class YouTubeFrameStreamer:
         Calls yt-dlp -g to fetch a fresh direct stream HTTPS URL pinned <= 720p.
         Throws RuntimeError if link is invalid or unavailable.
         """
+        youtube_url = youtube_url.strip().strip('"\'')
+        if not youtube_url or youtube_url.startswith("#") or not (youtube_url.startswith("http://") or youtube_url.startswith("https://")):
+            raise ValueError(f"Invalid stream URL '{youtube_url}'")
         cmd = [
             "yt-dlp",
             "-g",

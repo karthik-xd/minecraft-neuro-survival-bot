@@ -239,8 +239,8 @@ def cli_link_listener(queue_mgr: LinkQueueManager, stop_signal: threading.Event)
             line = sys.stdin.readline()
             if not line:
                 break
-            url = line.strip()
-            if url:
+            url = line.strip().strip('"\'')
+            if url and not url.startswith("#"):
                 queue_mgr.add_link(url)
         except Exception:
             break
@@ -264,18 +264,22 @@ if __name__ == "__main__":
 
     # Enqueue links from file if provided
     if args.links_file and os.path.exists(args.links_file):
-        with open(args.links_file, "r") as f:
+        with open(args.links_file, "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
-                trainer.queue_mgr.add_link(line.strip())
+                clean_line = line.strip().strip('"\'')
+                if clean_line and not clean_line.startswith("#"):
+                    trainer.queue_mgr.add_link(clean_line)
 
     # Enqueue CLI provided links
     for lk in args.links:
-        trainer.queue_mgr.add_link(lk)
+        clean_lk = lk.strip().strip('"\'')
+        if clean_lk and not clean_lk.startswith("#"):
+            trainer.queue_mgr.add_link(clean_lk)
 
     if trainer.queue_mgr.remaining() == 0:
         print("[Info] No initial links passed. Adding example high-quality Minecraft video to queue...")
-        # A standard public creative commons / no-copyright Minecraft gameplay stream link
-        trainer.queue_mgr.add_link("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        # A standard public Minecraft gameplay stream link
+        trainer.queue_mgr.add_link("https://youtu.be/HSwGH710EgA")
 
     # Start background streaming producer thread
     producer_thread = threading.Thread(target=trainer.stream_producer_loop, daemon=True)
