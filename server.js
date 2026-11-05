@@ -9,9 +9,9 @@ const path = require('path');
 const url = require('url');
 const { SurvivalBot } = require('./bot');
 const { DemonstrationRecorder } = require('./record');
-const { Brain } = require('./brain');
+const { Brain, newbieNet } = require('./brain');
 const { generateExpertDemos } = require('./generate_demos');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const { MinecraftKnowledgeEngine } = require('./knowledge');
 const { TreeEngine } = require('./tree_engine');
 const { PromptCommander } = require('./prompt_commander');
@@ -809,19 +809,103 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // 8c3e. Reset Neural Brain to 0 (Clear previous synthetic demo checkpoints)
-  if (pathname === '/api/bot/reset_brain' && req.method === 'POST') {
-    try {
-      if (activeBot && activeBot.brain) {
-        activeBot.brain.net = new (require('./brain').NeuroNet)();
-        activeBot.brain.generation = 0;
-        activeBot.brain.bestScore = -999999;
+  // 8c3e. Nuclear Purge: Delete ALL Learned Neural Weights, Checkpoints, and Models
+  function performCompletePurge() {
+    console.log('[PURGE] Executing complete purge of all learned neural models, weights, and checkpoints...');
+
+    // 1. Terminate running bot or youtube pipeline
+    if (activeBot) {
+      try { activeBot.stop(); } catch {}
+      activeBot = null;
+    }
+    if (activeYoutubeProcess) {
+      try {
+        if (process.platform === 'win32' && activeYoutubeProcess.pid) {
+          spawn('taskkill', ['/pid', activeYoutubeProcess.pid.toString(), '/T', '/F']);
+        } else {
+          activeYoutubeProcess.kill('SIGKILL');
+        }
+      } catch {}
+      activeYoutubeProcess = null;
+      youtubeTelemetry.isRunning = false;
+      youtubeTelemetry.isPaused = false;
+    }
+
+    // 2. Reset Brain in-memory and write fresh Gen 0 weights
+    brain.net = newbieNet();
+    brain.generation = 0;
+    brain.bestScore = -999999;
+    brain.save();
+
+    // 3. Delete past generation JSON snapshots and history
+    if (fs.existsSync(DATA_DIR)) {
+      const files = fs.readdirSync(DATA_DIR);
+      for (const f of files) {
+        if ((f.startsWith('gen_') || f.startsWith('brain_legacy_')) && f.endsWith('.json')) {
+          try { fs.unlinkSync(path.join(DATA_DIR, f)); } catch {}
+        }
       }
+      try {
+        fs.writeFileSync(path.join(DATA_DIR, 'history.json'), '[]');
+      } catch {}
+    }
+
+    // 4. Delete YouTube Checkpoint and reset imitation policy weights to clean random init
+    const checkpointMetaPath = path.join(YOUTUBE_DIR, 'checkpoint_meta.json');
+    if (fs.existsSync(checkpointMetaPath)) {
+      try { fs.unlinkSync(checkpointMetaPath); } catch {}
+    }
+    const policyPath = path.join(YOUTUBE_DIR, 'minecraft_policy.pth');
+    try {
+      const resetPy = `import torch; from models import MinecraftPolicy; torch.save(MinecraftPolicy().state_dict(), 'minecraft_policy.pth')`;
+      execSync(`python -c "${resetPy}"`, { cwd: YOUTUBE_DIR, timeout: 8000 });
+    } catch (e) {
+      console.warn('[PURGE] Policy reinit via python failed, unlinking file:', e.message);
+      if (fs.existsSync(policyPath)) {
+        try { fs.unlinkSync(policyPath); } catch {}
+      }
+    }
+
+    // 5. Reset YouTube Telemetry
+    youtubeTelemetry.isRunning = false;
+    youtubeTelemetry.isPaused = false;
+    youtubeTelemetry.step = 0;
+    youtubeTelemetry.lastFrame = 0;
+    youtubeTelemetry.bufferCount = 0;
+    youtubeTelemetry.btnLoss = 0;
+    youtubeTelemetry.camLoss = 0;
+    youtubeTelemetry.totalLoss = 0;
+    youtubeTelemetry.speed = 0;
+    youtubeTelemetry.videoPercent = 0;
+    youtubeTelemetry.currentTimeStr = '00:00';
+    youtubeTelemetry.totalTimeStr = '00:00';
+    youtubeTelemetry.currentSeconds = 0;
+    youtubeTelemetry.videoEta = '--:--';
+    youtubeTelemetry.setProgress = 0;
+    youtubeTelemetry.setEta = '--:--';
+    youtubeTelemetry.checkpoint = null;
+    youtubeTelemetry.resumedFrom = null;
+
+    // 6. Reset general telemetry
+    latestTelemetry.botOnline = false;
+    latestTelemetry.brainGen = 0;
+    latestTelemetry.hiddenNeurons = brain.net.H;
+    latestTelemetry.recentLogs.push('[PURGE] All learned models, checkpoints, weights, and histories wiped. System reset to Generation 0 with pristine random weights.');
+    broadcastTelemetry();
+
+    return {
+      success: true,
+      message: 'All learned neural models, checkpoints, and histories completely wiped. System reset to Generation 0 with clean random weights.',
+      brainGen: 0,
+      hiddenNeurons: brain.net.H
+    };
+  }
+
+  if ((pathname === '/api/bot/reset_brain' || pathname === '/api/purge_all_learned') && req.method === 'POST') {
+    try {
+      const result = performCompletePurge();
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({
-        success: true,
-        message: 'Brain reset to generation 0 with clean state!'
-      }));
+      res.end(JSON.stringify(result));
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: err.message }));

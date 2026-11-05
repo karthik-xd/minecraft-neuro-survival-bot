@@ -165,33 +165,20 @@ class SurvivalBot {
     this.intervalId = setInterval(async () => {
       if (!this.bot || !this.bot.entity) return;
 
-      // 1. Survival reflexes
-      await this.survival.checkWaterClutch();
-      const isEating = await this.survival.checkAndEat();
-      if (isEating || this.survival.isUnstucking) {
-        this.emitTelemetry();
-        return;
-      }
-
-      // 2. Sense surroundings
+      // 1. Sense surroundings (Feature extraction)
       const target = findTarget(this.bot, this.task, this.goal);
       const f = facts(this.bot, this.bot.entity, target, this.task);
 
-      // 3. Calculate reward for previous step if in combat/learning
+      // 2. Compute reinforcement reward from environment state transition
       if (this.prevStep) {
         const killed = !target && this.prevStep.f.hasTarget && this.prevStep.f.dist < 3.5;
         this.prevStep.step.r = stepReward(this.prevStep.f, f, this.prevStep.step.a, { killed });
       }
 
-      // 4. Stuck & Stop Diagnostics
+      // 3. Diagnostics & telemetry status (passive observer - never overrides neural network)
       this.survival.checkStuck(this.currentAction, f);
-      if (this.survival.isStuck) {
-        this.survival.tryUnstuck(f);
-        this.emitTelemetry(f);
-        return;
-      }
 
-      // 5. Brain decision & explainability
+      // 4. Pure neural network decision (Rule 1: Learn only from data, never by conditional code)
       const x = makeObs(f);
       const explanation = this.brain.explain(x);
       const { a } = this.brain.act(x);

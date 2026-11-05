@@ -596,6 +596,9 @@
       <div class="hidden sm:flex items-center gap-2 text-[8px] text-stone-400 font-mono shrink-0 pr-1">
         <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
         <span class="text-emerald-400 font-bold">ZOMBO READY</span>
+        <button onclick="purgeAllLearnedData()" class="mc-btn mc-btn-red text-[8px] py-1 px-2.5 font-bold shadow-md hover:brightness-110 flex items-center gap-1" title="Rule 1 of Deep Learning: Learn only from data. Wipe all weights, models, checkpoints, and reset to Generation 0">
+          🗑️ PURGE ALL LEARNED
+        </button>
       </div>
     </div>
 
@@ -2000,8 +2003,8 @@
               <span class="text-[8px] text-purple-300 font-mono">100% UNVARNISHED TECHNICAL TRUTH</span>
             </div>
           </div>
-          <button onclick="resetBrainToZero()" class="mc-btn px-3 py-1.5 text-[8px] bg-red-700 hover:bg-red-600 text-white font-mono rounded">
-            ⚠️ RESET BRAIN TO 0 NEURONS
+          <button onclick="purgeAllLearnedData()" class="mc-btn mc-btn-red px-3 py-1.5 text-[8px] font-bold rounded">
+            🗑️ PURGE ALL LEARNED DATA (GEN 0 RESET)
           </button>
         </div>
 
@@ -3025,16 +3028,39 @@
       `).join('');
     }
 
-    async function resetBrainToZero() {
-      if (!confirm('Are you sure you want to reset the neural brain to Generation 0 with clean weights?')) return;
+    window.purgeAllLearnedData = async function() {
+      const msg = 
+        "⚠️ PURGE ALL LEARNED DATA?\n\n" +
+        "RULE 1 OF DEEP LEARNING: Learn only from data. Never add conditional code.\n\n" +
+        "This will permanently delete:\n" +
+        "• All learned neural weights & generation checkpoints (gen_*_A.json)\n" +
+        "• YouTube imitation learning policy (minecraft_policy.pth)\n" +
+        "• Video playback checkpoints & resume timestamps (checkpoint_meta.json)\n" +
+        "• Evolution & training history logs\n\n" +
+        "The neural network will reset to Generation 0 with clean random weights.\n\n" +
+        "Do you want to proceed?";
+
+      if (!confirm(msg)) return;
+
+      appendLog("[PURGE] Initiating complete wipe of all learned neural models, checkpoints, and weights...");
       try {
-        const res = await fetch('/api/bot/reset_brain', { method: 'POST' });
+        const res = await fetch('/api/purge_all_learned', { method: 'POST' });
         const data = await res.json();
-        alert(data.message || 'Brain reset successfully!');
-        location.reload();
+        if (data.error) {
+          alert('Purge error: ' + data.error);
+        } else {
+          appendLog('[PURGE] ' + (data.message || 'Complete purge finished. Reset to Generation 0.'));
+          alert('✅ ALL LEARNED STUFF DELETED!\n\nSystem reset to Generation 0 with clean initial random weights.\nDeep Learning Rule 1 active: Learn purely from data.');
+          location.reload();
+        }
       } catch (err) {
-        alert('Reset failed: ' + err.message);
+        appendLog('[PURGE ERROR] ' + err.message);
+        alert('Purge failed: ' + err.message);
       }
+    };
+
+    async function resetBrainToZero() {
+      return window.purgeAllLearnedData();
     }
 
     function getItemEmoji(name) {
