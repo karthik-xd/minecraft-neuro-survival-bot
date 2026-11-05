@@ -1,0 +1,6 @@
+# Paste your YouTube Minecraft gameplay links here (one URL per line):
+# Example:
+# https://www.youtube.com/watch?v=VIDEO_ID_1
+# https://www.youtube.com/watch?v=VIDEO_ID_2
+
+https://www.youtube.com/watch?v=dQw4w9WgXcQ

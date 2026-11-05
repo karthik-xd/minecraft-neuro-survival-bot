@@ -1,0 +1,517 @@
+{
+  "lastUpdated": 1793863441131,
+  "chestsCount": 4,
+  "chests": {
+    "overworld_base_armory_10_64_25": {
+      "id": "overworld_base_armory_10_64_25",
+      "name": "Home Base - Armory & Weapons Vault",
+      "dimension": "overworld",
+      "x": 10,
+      "y": 64,
+      "z": 25,
+      "type": "chest",
+      "slotsCount": 27,
+      "totalCount": 79,
+      "uniqueItemCount": 12,
+      "lastSeen": 1793859841129,
+      "items": [
+        {
+          "slot": 0,
+          "name": "diamond_sword",
+          "displayName": "Diamond Sword",
+          "count": 1,
+          "rarity": "RARE",
+          "isConstantUse": true,
+          "textureUrl": "/textures/items/diamond_sword.png",
+          "category": "combat"
+        },
+        {
+          "slot": 1,
+          "name": "iron_sword",
+          "displayName": "Iron Sword",
+          "count": 2,
+          "rarity": "UNCOMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/items/iron_sword.png",
+          "category": "combat"
+        },
+        {
+          "slot": 2,
+          "name": "bow",
+          "displayName": "Bow",
+          "count": 1,
+          "rarity": "UNCOMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/items/bow.png",
+          "category": "combat"
+        },
+        {
+          "slot": 3,
+          "name": "arrow",
+          "displayName": "Arrow",
+          "count": 64,
+          "rarity": "COMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/items/arrow.png",
+          "category": "combat"
+        },
+        {
+          "slot": 4,
+          "name": "shield",
+          "displayName": "Shield",
+          "count": 1,
+          "rarity": "UNCOMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/items/shield.png",
+          "category": "combat"
+        },
+        {
+          "slot": 9,
+          "name": "iron_helmet",
+          "displayName": "Iron Helmet",
+          "count": 1,
+          "rarity": "UNCOMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/items/iron_helmet.png",
+          "category": "combat"
+        },
+        {
+          "slot": 10,
+          "name": "iron_chestplate",
+          "displayName": "Iron Chestplate",
+          "count": 1,
+          "rarity": "UNCOMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/items/iron_chestplate.png",
+          "category": "combat"
+        },
+        {
+          "slot": 11,
+          "name": "iron_leggings",
+          "displayName": "Iron Leggings",
+          "count": 1,
+          "rarity": "UNCOMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/items/iron_leggings.png",
+          "category": "combat"
+        },
+        {
+          "slot": 12,
+          "name": "iron_boots",
+          "displayName": "Iron Boots",
+          "count": 1,
+          "rarity": "UNCOMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/items/iron_boots.png",
+          "category": "combat"
+        },
+        {
+          "slot": 18,
+          "name": "diamond_pickaxe",
+          "displayName": "Diamond Pickaxe",
+          "count": 1,
+          "rarity": "RARE",
+          "isConstantUse": true,
+          "textureUrl": "/textures/items/diamond_pickaxe.png",
+          "category": "tools"
+        },
+        {
+          "slot": 19,
+          "name": "iron_pickaxe",
+          "displayName": "Iron Pickaxe",
+          "count": 3,
+          "rarity": "UNCOMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/items/iron_pickaxe.png",
+          "category": "tools"
+        },
+        {
+          "slot": 20,
+          "name": "iron_axe",
+          "displayName": "Iron Axe",
+          "count": 2,
+          "rarity": "UNCOMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/items/iron_axe.png",
+          "category": "tools"
+        }
+      ]
+    },
+    "overworld_base_ores_12_64_25": {
+      "id": "overworld_base_ores_12_64_25",
+      "name": "Home Base - Ore & Mineral Storage",
+      "dimension": "overworld",
+      "x": 12,
+      "y": 64,
+      "z": 25,
+      "type": "chest",
+      "slotsCount": 54,
+      "totalCount": 501,
+      "uniqueItemCount": 13,
+      "lastSeen": 1793861641129,
+      "items": [
+        {
+          "slot": 0,
+          "name": "diamond",
+          "displayName": "Diamond",
+          "count": 18,
+          "rarity": "RARE",
+          "isConstantUse": false,
+          "textureUrl": "/textures/items/diamond.png",
+          "category": "minerals"
+        },
+        {
+          "slot": 1,
+          "name": "iron_ingot",
+          "displayName": "Iron Ingot",
+          "count": 64,
+          "rarity": "UNCOMMON",
+          "isConstantUse": false,
+          "textureUrl": "/textures/items/iron_ingot.png",
+          "category": "minerals"
+        },
+        {
+          "slot": 2,
+          "name": "iron_ingot",
+          "displayName": "Iron Ingot",
+          "count": 48,
+          "rarity": "UNCOMMON",
+          "isConstantUse": false,
+          "textureUrl": "/textures/items/iron_ingot.png",
+          "category": "minerals"
+        },
+        {
+          "slot": 3,
+          "name": "gold_ingot",
+          "displayName": "Gold Ingot",
+          "count": 32,
+          "rarity": "UNCOMMON",
+          "isConstantUse": false,
+          "textureUrl": "/textures/items/gold_ingot.png",
+          "category": "minerals"
+        },
+        {
+          "slot": 4,
+          "name": "coal",
+          "displayName": "Coal",
+          "count": 64,
+          "rarity": "COMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/items/coal.png",
+          "category": "minerals"
+        },
+        {
+          "slot": 5,
+          "name": "coal",
+          "displayName": "Coal",
+          "count": 64,
+          "rarity": "COMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/items/coal.png",
+          "category": "minerals"
+        },
+        {
+          "slot": 6,
+          "name": "redstone",
+          "displayName": "Redstone Dust",
+          "count": 64,
+          "rarity": "UNCOMMON",
+          "isConstantUse": false,
+          "textureUrl": "/textures/items/redstone.png",
+          "category": "minerals"
+        },
+        {
+          "slot": 7,
+          "name": "lapis_lazuli",
+          "displayName": "Lapis Lazuli",
+          "count": 42,
+          "rarity": "UNCOMMON",
+          "isConstantUse": false,
+          "textureUrl": "/textures/items/lapis_lazuli.png",
+          "category": "minerals"
+        },
+        {
+          "slot": 8,
+          "name": "emerald",
+          "displayName": "Emerald",
+          "count": 7,
+          "rarity": "RARE",
+          "isConstantUse": false,
+          "textureUrl": "/textures/items/emerald.png",
+          "category": "minerals"
+        },
+        {
+          "slot": 9,
+          "name": "raw_iron",
+          "displayName": "Raw Iron",
+          "count": 28,
+          "rarity": "UNCOMMON",
+          "isConstantUse": false,
+          "textureUrl": "/textures/items/raw_iron.png",
+          "category": "minerals"
+        },
+        {
+          "slot": 10,
+          "name": "copper_ingot",
+          "displayName": "Copper Ingot",
+          "count": 64,
+          "rarity": "UNCOMMON",
+          "isConstantUse": false,
+          "textureUrl": "/textures/items/copper_ingot.png",
+          "category": "minerals"
+        },
+        {
+          "slot": 18,
+          "name": "ancient_debris",
+          "displayName": "Ancient Debris",
+          "count": 4,
+          "rarity": "EPIC",
+          "isConstantUse": false,
+          "textureUrl": "/textures/blocks/ancient_debris_top.png",
+          "category": "minerals"
+        },
+        {
+          "slot": 19,
+          "name": "netherite_scrap",
+          "displayName": "Netherite Scrap",
+          "count": 2,
+          "rarity": "EPIC",
+          "isConstantUse": false,
+          "textureUrl": "/textures/items/netherite_scrap.png",
+          "category": "materials"
+        }
+      ]
+    },
+    "overworld_base_food_14_64_25": {
+      "id": "overworld_base_food_14_64_25",
+      "name": "Home Base - Rations & Harvest Pantry",
+      "dimension": "overworld",
+      "x": 14,
+      "y": 64,
+      "z": 25,
+      "type": "barrel",
+      "slotsCount": 27,
+      "totalCount": 334,
+      "uniqueItemCount": 9,
+      "lastSeen": 1793862541129,
+      "items": [
+        {
+          "slot": 0,
+          "name": "bread",
+          "displayName": "Bread",
+          "count": 64,
+          "rarity": "COMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/items/bread.png",
+          "category": "food"
+        },
+        {
+          "slot": 1,
+          "name": "cooked_beef",
+          "displayName": "Steak",
+          "count": 32,
+          "rarity": "COMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/items/cooked_beef.png",
+          "category": "food"
+        },
+        {
+          "slot": 2,
+          "name": "cooked_porkchop",
+          "displayName": "Cooked Porkchop",
+          "count": 24,
+          "rarity": "COMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/items/cooked_porkchop.png",
+          "category": "food"
+        },
+        {
+          "slot": 3,
+          "name": "golden_apple",
+          "displayName": "Golden Apple",
+          "count": 4,
+          "rarity": "RARE",
+          "isConstantUse": true,
+          "textureUrl": "/textures/items/golden_apple.png",
+          "category": "food"
+        },
+        {
+          "slot": 4,
+          "name": "apple",
+          "displayName": "Apple",
+          "count": 16,
+          "rarity": "COMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/items/apple.png",
+          "category": "food"
+        },
+        {
+          "slot": 9,
+          "name": "wheat",
+          "displayName": "Wheat",
+          "count": 64,
+          "rarity": "COMMON",
+          "isConstantUse": false,
+          "textureUrl": "/textures/items/wheat.png",
+          "category": "materials"
+        },
+        {
+          "slot": 10,
+          "name": "wheat_seeds",
+          "displayName": "Wheat Seeds",
+          "count": 64,
+          "rarity": "COMMON",
+          "isConstantUse": false,
+          "textureUrl": "/textures/items/wheat_seeds.png",
+          "category": "materials"
+        },
+        {
+          "slot": 18,
+          "name": "torch",
+          "displayName": "Torch",
+          "count": 64,
+          "rarity": "COMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/blocks/torch.png",
+          "category": "utilities"
+        },
+        {
+          "slot": 19,
+          "name": "water_bucket",
+          "displayName": "Water Bucket",
+          "count": 2,
+          "rarity": "COMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/items/water_bucket.png",
+          "category": "tools"
+        }
+      ]
+    },
+    "overworld_base_building_16_64_25": {
+      "id": "overworld_base_building_16_64_25",
+      "name": "Home Base - Logs & Masonry Depot",
+      "dimension": "overworld",
+      "x": 16,
+      "y": 64,
+      "z": 25,
+      "type": "chest",
+      "slotsCount": 54,
+      "totalCount": 584,
+      "uniqueItemCount": 11,
+      "lastSeen": 1793862841129,
+      "items": [
+        {
+          "slot": 0,
+          "name": "oak_log",
+          "displayName": "Oak Log",
+          "count": 64,
+          "rarity": "COMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/blocks/oak_log.png",
+          "category": "blocks"
+        },
+        {
+          "slot": 1,
+          "name": "oak_log",
+          "displayName": "Oak Log",
+          "count": 64,
+          "rarity": "COMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/blocks/oak_log.png",
+          "category": "blocks"
+        },
+        {
+          "slot": 2,
+          "name": "oak_planks",
+          "displayName": "Oak Planks",
+          "count": 64,
+          "rarity": "COMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/blocks/oak_planks.png",
+          "category": "blocks"
+        },
+        {
+          "slot": 3,
+          "name": "oak_planks",
+          "displayName": "Oak Planks",
+          "count": 64,
+          "rarity": "COMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/blocks/oak_planks.png",
+          "category": "blocks"
+        },
+        {
+          "slot": 4,
+          "name": "stick",
+          "displayName": "Stick",
+          "count": 64,
+          "rarity": "COMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/items/stick.png",
+          "category": "materials"
+        },
+        {
+          "slot": 9,
+          "name": "cobblestone",
+          "displayName": "Cobblestone",
+          "count": 64,
+          "rarity": "COMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/blocks/cobblestone.png",
+          "category": "blocks"
+        },
+        {
+          "slot": 10,
+          "name": "cobblestone",
+          "displayName": "Cobblestone",
+          "count": 64,
+          "rarity": "COMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/blocks/cobblestone.png",
+          "category": "blocks"
+        },
+        {
+          "slot": 11,
+          "name": "stone",
+          "displayName": "Stone",
+          "count": 64,
+          "rarity": "COMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/blocks/stone.png",
+          "category": "materials"
+        },
+        {
+          "slot": 18,
+          "name": "dirt",
+          "displayName": "Dirt",
+          "count": 64,
+          "rarity": "COMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/blocks/dirt.png",
+          "category": "blocks"
+        },
+        {
+          "slot": 27,
+          "name": "crafting_table",
+          "displayName": "Crafting Table",
+          "count": 4,
+          "rarity": "COMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/blocks/crafting_table_front.png",
+          "category": "utilities"
+        },
+        {
+          "slot": 28,
+          "name": "furnace",
+          "displayName": "Furnace",
+          "count": 4,
+          "rarity": "COMMON",
+          "isConstantUse": true,
+          "textureUrl": "/textures/blocks/furnace_front.png",
+          "category": "utilities"
+        }
+      ]
+    }
+  },
+  "botPockets": []
+}

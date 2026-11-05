@@ -1,0 +1,21 @@
+{
+  "name": "minecraft-survival-neuro-bot",
+  "version": "1.0.0",
+  "description": "Minecraft Survival Bot with Neuro-Evolution, Player Imitation Learning, and Minecraft UI Web Terminal",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "server": "node server.js",
+    "bot": "node bot.js",
+    "record": "node record.js",
+    "train": "node clone.js",
+    "sim": "node sim_test.js 60"
+  },
+  "dependencies": {
+    "canvas": "^3.2.3",
+    "mineflayer": "^4.39.0",
+    "mineflayer-pathfinder": "^2.4.5",
+    "prismarine-viewer": "^1.31.0"
+  }
+}
