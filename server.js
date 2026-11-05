@@ -105,15 +105,22 @@ let youtubeTelemetry = {
 };
 
 const CHECKPOINT_META_PATH = path.join(YOUTUBE_DIR, 'checkpoint_meta.json');
-function loadCheckpointMeta() {
-  try {
-    if (fs.existsSync(CHECKPOINT_META_PATH)) {
-      const data = JSON.parse(fs.readFileSync(CHECKPOINT_META_PATH, 'utf8'));
-      youtubeTelemetry.checkpoint = data;
-      return data;
+function loadCheckpointMeta(retries = 3) {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      if (fs.existsSync(CHECKPOINT_META_PATH)) {
+        const raw = fs.readFileSync(CHECKPOINT_META_PATH, 'utf8').trim();
+        if (raw.startsWith('{') && raw.endsWith('}')) {
+          const data = JSON.parse(raw);
+          youtubeTelemetry.checkpoint = data;
+          return data;
+        }
+      }
+    } catch (err) {
+      if (attempt === retries - 1) {
+        console.warn('[CHECKPOINT] Failed to read checkpoint metadata:', err.message);
+      }
     }
-  } catch (err) {
-    console.warn('[CHECKPOINT] Failed to read checkpoint metadata:', err.message);
   }
   youtubeTelemetry.checkpoint = null;
   return null;
@@ -1184,9 +1191,8 @@ const server = http.createServer((req, res) => {
       latestTelemetry.recentLogs.push('[YOUTUBE BOT] Spawning Python In-Memory Stream & Imitation Pipeline...');
       youtubeTelemetry.isRunning = true;
 
-      activeYoutubeProcess = spawn('python', ['-u', 'train_policy.py', '--links-file', 'links.txt'], {
-        cwd: YOUTUBE_DIR,
-        shell: true
+      activeYoutubeProcess = spawn('python', ['-u', 'train_policy.py', '--links-file', 'links.txt', '--steps', '0'], {
+        cwd: YOUTUBE_DIR
       });
 
       activeYoutubeProcess.stdout.on('data', chunk => {
@@ -1278,7 +1284,7 @@ const server = http.createServer((req, res) => {
           }
 
           if (line.includes('Total Loss:')) {
-            const stepMatch = line.match(/Step \[(\d+)\/(\d+)\]/);
+            const stepMatch = line.match(/Step \[(\d+)\/(\d+|CONT)\]/);
             const lossMatch = line.match(/Total Loss: ([\d\.]+)/);
             const btnMatch = line.match(/Btn Loss: ([\d\.]+)/);
             const camMatch = line.match(/Cam Loss: ([\d\.]+)/);
@@ -1287,7 +1293,7 @@ const server = http.createServer((req, res) => {
 
             if (stepMatch) {
               youtubeTelemetry.step = parseInt(stepMatch[1], 10);
-              youtubeTelemetry.totalSteps = parseInt(stepMatch[2], 10);
+              youtubeTelemetry.totalSteps = (stepMatch[2] === 'CONT') ? '∞' : parseInt(stepMatch[2], 10);
             }
             if (lossMatch) youtubeTelemetry.totalLoss = parseFloat(lossMatch[1]);
             if (btnMatch) youtubeTelemetry.btnLoss = parseFloat(btnMatch[1]);

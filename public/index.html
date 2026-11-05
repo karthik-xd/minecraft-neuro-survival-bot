@@ -3156,39 +3156,40 @@
         for (let i = 9; i <= 35; i++) {
           const it = slots[i];
           const isHeld = (it && heldName && it.name && heldName.toLowerCase() === it.name.toLowerCase());
-          if (it) {
-            const texUrl = getItemTextureUrl(it.name);
-            html += '<div id="slot-' + i + '" class="mc-gui-slot' + (isHeld ? ' active-held' : '') + '" title="' + (it.displayName || it.name) + ' (x' + (it.count || 1) + ') [Slot ' + i + ']">' +
-              '<img src="' + texUrl + '" class="item-img" onerror="this.onerror=null; this.style.display=\'none\';" />' +
-              ((it.count && it.count > 1) ? ('<span class="count-badge">' + item.count + '</span>') : '') +
-              '</div>';
-          } else {
-            html += '<div id="slot-' + i + '" class="mc-gui-slot" title="Empty Slot ' + i + '"><span class="slot-num">' + i + '</span></div>';
+            if (it) {
+              const texUrl = getItemTextureUrl(it.name);
+              html += '<div id="slot-' + i + '" class="mc-gui-slot' + (isHeld ? ' active-held' : '') + '" title="' + (it.displayName || it.name) + ' (x' + (it.count || 1) + ') [Slot ' + i + ']">' +
+                '<img src="' + texUrl + '" class="item-img" onerror="this.onerror=null; this.style.display=\'none\';" />' +
+                ((it.count && it.count > 1) ? ('<span class="count-badge">' + it.count + '</span>') : '') +
+                '</div>';
+            } else {
+              html += '<div id="slot-' + i + '" class="mc-gui-slot" title="Empty Slot ' + i + '"><span class="slot-num">' + i + '</span></div>';
+            }
           }
+          mainEl.innerHTML = html;
         }
-        mainEl.innerHTML = html;
-      }
 
-      // 6. Hotbar Slots (36 to 44, 1 row x 9 cols)
-      const hotbarEl = document.getElementById('hotbarSlots');
-      if (hotbarEl) {
-        let html = '';
-        for (let i = 36; i <= 44; i++) {
-          const it = slots[i];
-          const isHeld = (it && heldName && it.name && heldName.toLowerCase() === it.name.toLowerCase());
-          if (it) {
-            const texUrl = getItemTextureUrl(it.name);
-            html += '<div id="slot-' + i + '" class="mc-gui-slot' + (isHeld ? ' active-held' : '') + '" title="' + (it.displayName || it.name) + ' (x' + (it.count || 1) + ') [Slot ' + i + ']">' +
-              '<img src="' + texUrl + '" class="item-img" onerror="this.onerror=null; this.style.display=\'none\';" />' +
-              ((it.count && it.count > 1) ? ('<span class="count-badge">' + item.count + '</span>') : '') +
-              '</div>';
-          } else {
-            html += '<div id="slot-' + i + '" class="mc-gui-slot' + (isHeld ? ' active-held' : '') + '" title="Empty Slot ' + i + '"><span class="slot-num">' + i + '</span></div>';
+        // 6. Hotbar Slots (36 to 44, 1 row x 9 cols)
+        const hotbarEl = document.getElementById('hotbarSlots');
+        if (hotbarEl) {
+          let html = '';
+          for (let i = 36; i <= 44; i++) {
+            const it = slots[i];
+            const isHeld = (it && heldName && it.name && heldName.toLowerCase() === it.name.toLowerCase());
+            if (it) {
+              const texUrl = getItemTextureUrl(it.name);
+              html += '<div id="slot-' + i + '" class="mc-gui-slot' + (isHeld ? ' active-held' : '') + '" title="' + (it.displayName || it.name) + ' (x' + (it.count || 1) + ') [Slot ' + i + ']">' +
+                '<img src="' + texUrl + '" class="item-img" onerror="this.onerror=null; this.style.display=\'none\';" />' +
+                ((it.count && it.count > 1) ? ('<span class="count-badge">' + it.count + '</span>') : '') +
+                '</div>';
+            } else {
+              html += '<div id="slot-' + i + '" class="mc-gui-slot' + (isHeld ? ' active-held' : '') + '" title="Empty Slot ' + i + '"><span class="slot-num">' + i + '</span></div>';
+            }
           }
+          hotbarEl.innerHTML = html;
         }
-        hotbarEl.innerHTML = html;
       }
-    }
+      renderInventoryGrid(cachedInventorySlots, null);
 
     // ===== SURVIVAL PLANNER & TECH TREE CONTROLLER =====
     function updatePlannerUI(p, heldItem) {

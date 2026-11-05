@@ -60,6 +60,8 @@ class StreamingTrainer:
         self.replay_buffer = InactiveReplayBuffer(capacity=config.BUFFER_CAPACITY)
         self.stop_signal = threading.Event()
         self.is_paused = False
+        self.is_producing = False
+        self.producer_finished = False
 
         # Live telemetry tracking
         self.current_video_url = None
@@ -123,8 +125,12 @@ class StreamingTrainer:
                 "is_manual": is_manual,
                 "timestamp": time.time()
             }
-            with open(self.checkpoint_meta_path, "w", encoding="utf-8") as f:
+            tmp_path = self.checkpoint_meta_path + ".tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(checkpoint_data, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, self.checkpoint_meta_path)
 
             torch.save(self.policy.state_dict(), self.policy_checkpoint_path)
 
@@ -147,8 +153,12 @@ class StreamingTrainer:
         while not self.stop_signal.is_set():
             url = self.queue_mgr.get_next_link(timeout=2.0)
             if url is None:
+                if video_index > 0 and self.queue_mgr.remaining() == 0:
+                    self.producer_finished = True
                 continue
 
+            self.is_producing = True
+            self.producer_finished = False
             video_index += 1
             total_videos_count = max(video_index, self.queue_mgr.total_added())
 
@@ -279,13 +289,18 @@ class StreamingTrainer:
                 print(f"[Producer Warning] Stream error on {url}: {e}. Skipping safely.", flush=True)
             finally:
                 self.queue_mgr.task_done()
+                self.is_producing = False
 
+        self.producer_finished = True
         print("[Producer Thread] Producer exited.", flush=True)
 
-    def train_policy_loop(self, total_steps: int = 5000, log_interval: int = 50, save_interval: int = 500):
+    def train_policy_loop(self, total_steps: int = 0, log_interval: int = 50, save_interval: int = 500):
         """
         Main training loop. Uniformly samples uncorrelated random mini-batches from the Replay Buffer.
+        If total_steps <= 0, continuously trains alongside video streaming until all videos finish.
         """
+        is_continuous = (total_steps <= 0)
+        mode_str = "continuous video-driven stream" if is_continuous else f"{total_steps} steps"
         print("[Trainer] Waiting for video stream & replay buffer warmup...", flush=True)
         idle_announced = False
         while len(self.replay_buffer) < self.min_buffer_warmup:
@@ -302,7 +317,7 @@ class StreamingTrainer:
             idle_announced = False
             print(f"[Trainer] Buffer warmup: {len(self.replay_buffer)}/{self.min_buffer_warmup} transitions...", flush=True)
 
-        print(f"[Trainer] Replay buffer warmed up ({len(self.replay_buffer)} transitions). Starting training for {total_steps} steps...", flush=True)
+        print(f"[Trainer] Replay buffer warmed up ({len(self.replay_buffer)} transitions). Starting training for {mode_str}...", flush=True)
         self.policy.train()
 
         running_loss = 0.0
@@ -310,13 +325,33 @@ class StreamingTrainer:
         running_cam_loss = 0.0
         step_count = 0
         start_time = time.time()
+        step = 0
+        cooldown_steps = 0
 
-        for step in range(1, total_steps + 1):
+        while not self.stop_signal.is_set():
+            if not is_continuous and step >= total_steps:
+                break
+
             while self.is_paused and not self.stop_signal.is_set():
                 time.sleep(0.1)
             if self.stop_signal.is_set():
                 break
 
+            if len(self.replay_buffer) < self.batch_size:
+                if self.producer_finished and self.queue_mgr.remaining() == 0:
+                    print("[Trainer] Video queue and buffer finished. Training complete.", flush=True)
+                    break
+                time.sleep(0.05)
+                continue
+
+            # In continuous mode, if producer is done and all videos processed, perform a 500-step cooldown convergence
+            if is_continuous and self.producer_finished and self.queue_mgr.remaining() == 0:
+                cooldown_steps += 1
+                if cooldown_steps > 500:
+                    print("[Trainer] Completed post-stream convergence passes. Training complete.", flush=True)
+                    break
+
+            step += 1
             self.current_step = step
 
             # Uniform random non-consecutive batch sampling
@@ -351,7 +386,8 @@ class StreamingTrainer:
                 avg_btn = running_btn_loss / log_interval
                 avg_cam = running_cam_loss / log_interval
 
-                print(f"Step [{step:05d}/{total_steps:05d}] | "
+                step_hdr = f"Step [{step:05d}/CONT]" if is_continuous else f"Step [{step:05d}/{total_steps:05d}]"
+                print(f"{step_hdr} | "
                       f"Total Loss: {avg_total:.4f} | "
                       f"Btn Loss: {avg_btn:.4f} | "
                       f"Cam Loss: {avg_cam:.4f} | "
@@ -369,7 +405,7 @@ class StreamingTrainer:
 
         # Final save
         self.save_checkpoint(is_manual=False)
-        print(f"[Trainer] Policy training complete. Model saved to '{self.policy_checkpoint_path}'")
+        print(f"[Trainer] Policy training complete. Model saved to '{self.policy_checkpoint_path}'", flush=True)
 
 
 def cli_link_listener(trainer: StreamingTrainer):
@@ -400,7 +436,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Stream YouTube gameplay & train Minecraft Imitation Policy.")
     parser.add_argument("--links", nargs="*", default=[], help="Initial list of YouTube URLs.")
     parser.add_argument("--links-file", type=str, default=None, help="Text file containing YouTube URLs (one per line).")
-    parser.add_argument("--steps", type=int, default=3000, help="Total training steps.")
+    parser.add_argument("--steps", type=int, default=0, help="Total training steps (0 for continuous streaming).")
     parser.add_argument("--warmup", type=int, default=128, help="Min transitions in replay buffer before training starts.")
     parser.add_argument("--idm-weights", type=str, default="idm_model.pth", help="Path to IDM weights file.")
     parser.add_argument("--output", type=str, default="minecraft_policy.pth", help="Checkpoint output file.")
@@ -442,40 +478,7 @@ if __name__ == "__main__":
     try:
         trainer.train_policy_loop(total_steps=args.steps)
     except KeyboardInterrupt:
-        print("\n[Notice] Training interrupted by user. Shutting down safely...")
+        print("\n[Notice] Training interrupted by user. Shutting down safely...", flush=True)
     finally:
         trainer.stop_signal.set()
-        print("[Notice] Pipeline stopped.")
-
-    # Enqueue links from file if provided
-    if args.links_file and os.path.exists(args.links_file):
-        with open(args.links_file, "r", encoding="utf-8", errors="ignore") as f:
-            for line in f:
-                clean_line = line.strip().strip('"\'')
-                if clean_line and not clean_line.startswith("#"):
-                    trainer.queue_mgr.add_link(clean_line)
-
-    # Enqueue CLI provided links
-    for lk in args.links:
-        clean_lk = lk.strip().strip('"\'')
-        if clean_lk and not clean_lk.startswith("#"):
-            trainer.queue_mgr.add_link(clean_lk)
-
-    if trainer.queue_mgr.remaining() == 0:
-        print("[Info] Link queue empty. Waiting for user to enqueue YouTube links via UI or CLI...", flush=True)
-
-    # Start background streaming producer thread
-    producer_thread = threading.Thread(target=trainer.stream_producer_loop, daemon=True)
-    producer_thread.start()
-
-    # Start CLI link listener thread
-    cli_thread = threading.Thread(target=cli_link_listener, args=(trainer.queue_mgr, trainer.stop_signal), daemon=True)
-    cli_thread.start()
-
-    try:
-        trainer.train_policy_loop(total_steps=args.steps)
-    except KeyboardInterrupt:
-        print("\n[Notice] Training interrupted by user. Shutting down safely...")
-    finally:
-        trainer.stop_signal.set()
-        print("[Notice] Pipeline stopped.")
+        print("[Notice] Pipeline stopped.", flush=True)
