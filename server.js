@@ -72,6 +72,9 @@ try {
 
 let youtubeTelemetry = {
   isRunning: false,
+  isPaused: false,
+  checkpoint: null,
+  resumedFrom: null,
   currentVideo: null,
   videoTitle: 'Minecraft Gameplay',
   bufferCount: 0,
@@ -101,6 +104,22 @@ let youtubeTelemetry = {
   lastMouse: { dx: '+0.00', dy: '+0.00' }
 };
 
+const CHECKPOINT_META_PATH = path.join(YOUTUBE_DIR, 'checkpoint_meta.json');
+function loadCheckpointMeta() {
+  try {
+    if (fs.existsSync(CHECKPOINT_META_PATH)) {
+      const data = JSON.parse(fs.readFileSync(CHECKPOINT_META_PATH, 'utf8'));
+      youtubeTelemetry.checkpoint = data;
+      return data;
+    }
+  } catch (err) {
+    console.warn('[CHECKPOINT] Failed to read checkpoint metadata:', err.message);
+  }
+  youtubeTelemetry.checkpoint = null;
+  return null;
+}
+loadCheckpointMeta();
+
 const brain = new Brain(DATA_DIR);
 const treeEngine = new TreeEngine({ brain, demosDir: DEMO_DIR, dataDir: DATA_DIR });
 
@@ -111,23 +130,8 @@ let currentSkinUrl = '/textures/skins/steve.png';
 
 // Baseline 46-slot inventory array matching authentic Minecraft container slots (0-45)
 function createDefaultInventorySlots() {
-  const slots = Array(46).fill(null);
-  // Add initial starter equipment preview
-  slots[36] = { slot: 36, name: 'iron_sword', displayName: 'Iron Sword', count: 1 };
-  slots[37] = { slot: 37, name: 'diamond_pickaxe', displayName: 'Diamond Pickaxe', count: 1 };
-  slots[38] = { slot: 38, name: 'iron_axe', displayName: 'Iron Axe', count: 1 };
-  slots[39] = { slot: 39, name: 'water_bucket', displayName: 'Water Bucket', count: 1 };
-  slots[40] = { slot: 40, name: 'bread', displayName: 'Bread', count: 16 };
-  slots[41] = { slot: 41, name: 'torch', displayName: 'Torch', count: 32 };
-  slots[42] = { slot: 42, name: 'oak_log', displayName: 'Oak Log', count: 64 };
-  slots[43] = { slot: 43, name: 'cobblestone', displayName: 'Cobblestone', count: 64 };
-  slots[44] = { slot: 44, name: 'shield', displayName: 'Shield', count: 1 };
-  slots[5] = { slot: 5, name: 'iron_helmet', displayName: 'Iron Helmet', count: 1 };
-  slots[6] = { slot: 6, name: 'iron_chestplate', displayName: 'Iron Chestplate', count: 1 };
-  slots[7] = { slot: 7, name: 'iron_leggings', displayName: 'Iron Leggings', count: 1 };
-  slots[8] = { slot: 8, name: 'iron_boots', displayName: 'Iron Boots', count: 1 };
-  slots[45] = { slot: 45, name: 'shield', displayName: 'Shield', count: 1 };
-  return slots;
+  // Real-time pure empty inventory by default. Populated ONLY by live Mineflayer bot.inventory.slots
+  return Array(46).fill(null);
 }
 
 let latestTelemetry = {
@@ -154,7 +158,7 @@ let latestTelemetry = {
   recentDecisions: [],
   recorderStats: { count: 0, lastAction: 'idle', target: 'none' },
   viewerPort: VIEWER_PORT,
-  heldItem: 'iron_sword',
+  heldItem: null,
   skinUrl: currentSkinUrl,
   inventorySlots: createDefaultInventorySlots(),
   plannerStatus: null
@@ -1112,6 +1116,20 @@ const server = http.createServer((req, res) => {
           latestTelemetry.recentLogs.push(line);
           if (latestTelemetry.recentLogs.length > 50) latestTelemetry.recentLogs.shift();
 
+          if (line.includes('[PIPELINE PAUSED]')) {
+            youtubeTelemetry.isPaused = true;
+          }
+          if (line.includes('[PIPELINE RESUMED]')) {
+            youtubeTelemetry.isPaused = false;
+          }
+          if (line.includes('CHECKPOINT SAVED]')) {
+            loadCheckpointMeta();
+          }
+          if (line.includes('[RESUMING VIDEO]')) {
+            const resMatch = line.match(/from ([\d\.]+)s/);
+            if (resMatch) youtubeTelemetry.resumedFrom = parseFloat(resMatch[1]);
+          }
+
           if (line.includes('---> Streaming from:')) {
             const parts = line.split('---> Streaming from:');
             if (parts[1]) youtubeTelemetry.currentVideo = parts[1].trim();
@@ -1230,10 +1248,84 @@ const server = http.createServer((req, res) => {
       }
       activeYoutubeProcess = null;
       youtubeTelemetry.isRunning = false;
+      youtubeTelemetry.isPaused = false;
       latestTelemetry.recentLogs.push('[YOUTUBE BOT] Termination signal sent to Python pipeline.');
     }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: true, message: 'Pipeline stopped' }));
+    return;
+  }
+
+  // 8i. Video Stream Learning API: Pause / Resume Pipeline
+  if (pathname === '/api/youtube/pause' && req.method === 'POST') {
+    if (!activeYoutubeProcess) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Pipeline is not running.' }));
+      return;
+    }
+    const targetState = !youtubeTelemetry.isPaused;
+    const cmd = targetState ? 'PAUSE\n' : 'RESUME\n';
+    try {
+      if (activeYoutubeProcess.stdin && !activeYoutubeProcess.stdin.destroyed) {
+        activeYoutubeProcess.stdin.write(cmd);
+        youtubeTelemetry.isPaused = targetState;
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, isPaused: youtubeTelemetry.isPaused }));
+      } else {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Python stdin pipe unavailable.' }));
+      }
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    }
+    return;
+  }
+
+  // 8j. Video Stream Learning API: Manual Checkpoint Placement
+  if (pathname === '/api/youtube/checkpoint' && req.method === 'POST') {
+    if (!activeYoutubeProcess) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Pipeline is not running. Cannot place checkpoint while idle.' }));
+      return;
+    }
+    try {
+      if (activeYoutubeProcess.stdin && !activeYoutubeProcess.stdin.destroyed) {
+        activeYoutubeProcess.stdin.write('CHECKPOINT\n');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, message: 'Checkpoint triggered.' }));
+      } else {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Python stdin pipe unavailable.' }));
+      }
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    }
+    return;
+  }
+
+  // 8k. Video Stream Learning API: Get / Reset Checkpoint Metadata
+  if (pathname === '/api/youtube/checkpoint' && req.method === 'GET') {
+    const cp = loadCheckpointMeta();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ checkpoint: cp }));
+    return;
+  }
+
+  if (pathname === '/api/youtube/clear_checkpoint' && req.method === 'POST') {
+    try {
+      if (fs.existsSync(CHECKPOINT_META_PATH)) {
+        fs.unlinkSync(CHECKPOINT_META_PATH);
+      }
+      youtubeTelemetry.checkpoint = null;
+      youtubeTelemetry.resumedFrom = null;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, message: 'Checkpoint cleared.' }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    }
     return;
   }
 

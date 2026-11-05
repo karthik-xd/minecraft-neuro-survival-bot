@@ -105,10 +105,11 @@ class YouTubeFrameStreamer:
 
         return file_path, duration_sec, title
 
-    def stream_frames(self, video_source: str) -> Generator[tuple[np.ndarray, dict], None, None]:
+    def stream_frames(self, video_source: str, start_second: float = 0.0) -> Generator[tuple[np.ndarray, dict], None, None]:
         """
         Yields raw decoded gameplay frames in memory as NumPy arrays with video metadata:
         Handles BOTH YouTube stream URLs and Local video files (.mp4, .mkv, .webm).
+        Supports resuming from exact video timestamp (start_second).
         Yields: (frame [128, 128, 3] uint8, metadata dict)
         """
         is_local = self._is_local_file(video_source)
@@ -125,20 +126,29 @@ class YouTubeFrameStreamer:
                 print(f"[Streamer Notice] Skipping unavailable YouTube video ({video_source}): {e}", flush=True)
                 return
 
+        # Cap start_second safely within duration
+        if duration_sec > 0 and start_second >= duration_sec - 1.0:
+            start_second = 0.0
+
         total_frames = int(duration_sec * self.fps) if duration_sec > 0 else 0
         meta = {
             "title": title,
             "duration_sec": duration_sec,
             "total_frames": total_frames,
             "url": video_source,
-            "is_local": is_local
+            "is_local": is_local,
+            "start_second": start_second
         }
+
+        # Build fast-seek argument if starting from a checkpoint
+        seek_args = ["-ss", f"{start_second:.2f}"] if start_second > 0.0 else []
 
         # FFmpeg subprocess piping directly to stdout (pipe:1) with no disk caching
         if is_local:
             ffmpeg_cmd = [
                 self.ffmpeg_bin,
-                "-nostdin",
+                "-nostdin"
+            ] + seek_args + [
                 "-loglevel", "error",
                 "-i", stream_url,
                 "-vf", f"scale={self.width}:{self.height},fps={self.fps}",
@@ -149,7 +159,8 @@ class YouTubeFrameStreamer:
         else:
             ffmpeg_cmd = [
                 self.ffmpeg_bin,
-                "-nostdin",
+                "-nostdin"
+            ] + seek_args + [
                 "-loglevel", "error",
                 "-reconnect", "1",
                 "-reconnect_streamed", "1",

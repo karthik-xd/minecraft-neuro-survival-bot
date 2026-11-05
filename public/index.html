@@ -136,6 +136,30 @@
       color: #BAE6FD;
     }
 
+    .mc-btn-yellow {
+      background-color: #d97706;
+      border-top-color: #fbbf24;
+      border-left-color: #fbbf24;
+      border-right-color: #92400e;
+      border-bottom-color: #92400e;
+    }
+    .mc-btn-yellow:hover {
+      background-color: #f59e0b;
+      color: #FEF3C7;
+    }
+
+    .mc-btn-purple {
+      background-color: #6b21a8;
+      border-top-color: #a855f7;
+      border-left-color: #a855f7;
+      border-right-color: #4c1d95;
+      border-bottom-color: #4c1d95;
+    }
+    .mc-btn-purple:hover {
+      background-color: #7e22ce;
+      color: #F3E8FF;
+    }
+
     /* Minecraft Input Box */
     .mc-input {
       background-color: #000000;
@@ -1798,13 +1822,33 @@
             </div>
 
             <!-- Pipeline Action Controls -->
-            <div class="flex gap-2 pt-1">
+            <div class="flex gap-1.5 pt-1">
               <button id="btnYtStart" class="mc-btn mc-btn-blue flex-1 text-[9px] py-2 font-bold">
-                ▶ START STREAM &amp; TRAIN
+                ▶ START
+              </button>
+              <button id="btnYtPause" class="mc-btn mc-btn-yellow flex-1 text-[9px] py-2 font-bold" disabled>
+                ⏸ PAUSE
+              </button>
+              <button id="btnYtCheckpoint" class="mc-btn mc-btn-purple flex-1 text-[9px] py-2 font-bold" disabled title="Save weights, replay buffer, and video timestamp">
+                💾 CHECKPOINT
               </button>
               <button id="btnYtStop" class="mc-btn mc-btn-red flex-1 text-[9px] py-2" disabled>
-                ⏹ STOP PIPELINE
+                ⏹ STOP
               </button>
+            </div>
+
+            <!-- Checkpoint & Resume Status Banner -->
+            <div id="checkpointStatusBanner" class="hidden text-[7px] bg-slate-950 border border-purple-800/70 rounded px-2 py-1.5 flex items-center justify-between text-purple-200 font-mono">
+              <div class="flex items-center gap-1.5 truncate">
+                <span class="text-amber-300 font-bold shrink-0">💾 CHECKPOINT:</span>
+                <span id="checkpointBannerText" class="truncate text-slate-200">No checkpoint placed</span>
+              </div>
+              <div class="flex items-center gap-1.5 shrink-0">
+                <span id="checkpointResumeBadge" class="px-1.5 py-0.5 bg-emerald-950 text-emerald-300 border border-emerald-700 rounded text-[6px] font-bold">⚡ AUTO-RESUME READY</span>
+                <button id="btnClearCheckpoint" type="button" class="text-rose-300 hover:text-rose-100 text-[6px] px-1.5 py-0.5 bg-rose-950 border border-rose-800 rounded font-bold" title="Clear saved timestamp and restart from 00:00">
+                  RESET
+                </button>
+              </div>
             </div>
 
             <!-- 🎮 GAME-STYLE NEURAL LEARNING BARS & PROGRESSION -->
@@ -2791,7 +2835,7 @@
 
     function getItemTexture(name) {
       const url = getItemTextureUrl(name);
-      return '<img src="' + url + '" class="w-4 h-4 pixel-icon inline-block" onerror="this.onerror=null; this.src=\'/textures/items/apple.png\';" />';
+      return '<img src="' + url + '" class="w-4 h-4 pixel-icon inline-block" onerror="this.onerror=null; this.style.display=\'none\';" />';
     }
 
     // ===== SPATIAL CHEST & WORLD RESOURCE MEMORY CONTROLLER =====
@@ -2832,7 +2876,7 @@
         } else {
           constantGrid.innerHTML = data.constantUsing.map(it => `
             <div class="flex items-center gap-1.5 p-1 bg-stone-900 border border-stone-700 rounded shrink-0" title="${it.displayName} (Total: ${it.totalCount})">
-              <img src="${it.textureUrl}" class="w-5 h-5 pixel-icon shrink-0" onerror="this.src='/textures/items/apple.png'" />
+              <img src="${it.textureUrl}" class="w-5 h-5 pixel-icon shrink-0" onerror="this.onerror=null; this.style.display='none'" />
               <div class="font-mono text-left">
                 <span class="text-[7px] text-white font-bold block truncate max-w-[80px]">${it.displayName}</span>
                 <span class="text-[7px] text-cyan-400 font-bold block">${it.totalCount}x</span>
@@ -2874,7 +2918,7 @@
           if (it) {
             slotsHtml += `
               <div class="mc-slot bg-stone-900 border-stone-600 relative" title="${it.displayName} (x${it.count}) [Slot ${i}]">
-                <img src="${it.textureUrl}" class="w-4 h-4 pixel-icon" onerror="this.src='/textures/items/apple.png'" />
+                <img src="${it.textureUrl}" class="w-4 h-4 pixel-icon" onerror="this.onerror=null; this.style.display='none'" />
                 ${it.count > 1 ? `<span class="count-badge">${it.count}</span>` : ''}
               </div>
             `;
@@ -2964,7 +3008,7 @@
       listContainer.innerHTML = items.map(it => `
         <div class="flex items-center justify-between p-2 bg-stone-950 border border-stone-850 rounded hover:border-amber-500/50 transition">
           <div class="flex items-center gap-2">
-            <img src="${it.textureUrl}" class="w-6 h-6 pixel-icon shrink-0" onerror="this.src='/textures/items/apple.png'" />
+            <img src="${it.textureUrl}" class="w-6 h-6 pixel-icon shrink-0" onerror="this.onerror=null; this.style.display='none'" />
             <div class="min-w-0">
               <span class="text-[8px] font-bold text-white block truncate">${it.displayName}</span>
               <div class="flex items-center gap-1 mt-0.5">
@@ -3037,7 +3081,7 @@
         slotEl.title = (item.displayName || item.name) + ' (x' + (item.count || 1) + ') [Slot ' + slotIndex + ']';
         const texUrl = getItemTextureUrl(item.name);
         slotEl.innerHTML = 
-          '<img src="' + texUrl + '" class="item-img" onerror="this.onerror=null; this.src=\'/textures/items/apple.png\';" />' +
+          '<img src="' + texUrl + '" class="item-img" onerror="this.onerror=null; this.style.display=\'none\';" />' +
           ((item.count && item.count > 1) ? ('<span class="count-badge">' + item.count + '</span>') : '');
       } else {
         slotEl.className = 'mc-gui-slot' + (isHeld ? ' active-held' : '');
@@ -3089,8 +3133,8 @@
           if (it) {
             const texUrl = getItemTextureUrl(it.name);
             html += '<div id="slot-' + i + '" class="mc-gui-slot' + (isHeld ? ' active-held' : '') + '" title="' + (it.displayName || it.name) + ' (x' + (it.count || 1) + ') [Slot ' + i + ']">' +
-              '<img src="' + texUrl + '" class="item-img" onerror="this.onerror=null; this.src=\'/textures/items/apple.png\';" />' +
-              ((it.count && it.count > 1) ? ('<span class="count-badge">' + it.count + '</span>') : '') +
+              '<img src="' + texUrl + '" class="item-img" onerror="this.onerror=null; this.style.display=\'none\';" />' +
+              ((it.count && it.count > 1) ? ('<span class="count-badge">' + item.count + '</span>') : '') +
               '</div>';
           } else {
             html += '<div id="slot-' + i + '" class="mc-gui-slot" title="Empty Slot ' + i + '"><span class="slot-num">' + i + '</span></div>';
@@ -3109,8 +3153,8 @@
           if (it) {
             const texUrl = getItemTextureUrl(it.name);
             html += '<div id="slot-' + i + '" class="mc-gui-slot' + (isHeld ? ' active-held' : '') + '" title="' + (it.displayName || it.name) + ' (x' + (it.count || 1) + ') [Slot ' + i + ']">' +
-              '<img src="' + texUrl + '" class="item-img" onerror="this.onerror=null; this.src=\'/textures/items/apple.png\';" />' +
-              ((it.count && it.count > 1) ? ('<span class="count-badge">' + it.count + '</span>') : '') +
+              '<img src="' + texUrl + '" class="item-img" onerror="this.onerror=null; this.style.display=\'none\';" />' +
+              ((it.count && it.count > 1) ? ('<span class="count-badge">' + item.count + '</span>') : '') +
               '</div>';
           } else {
             html += '<div id="slot-' + i + '" class="mc-gui-slot' + (isHeld ? ' active-held' : '') + '" title="Empty Slot ' + i + '"><span class="slot-num">' + i + '</span></div>';
@@ -4031,10 +4075,63 @@
         await fetch('/api/youtube/stop', { method: 'POST' });
         document.getElementById('btnYtStart').disabled = false;
         document.getElementById('btnYtStop').disabled = true;
+        document.getElementById('btnYtPause').disabled = true;
+        document.getElementById('btnYtCheckpoint').disabled = true;
       } catch (err) {
         appendLog(`[YOUTUBE ERROR] ${err.message}`);
       }
     });
+
+    const btnYtPauseEl = document.getElementById('btnYtPause');
+    if (btnYtPauseEl) {
+      btnYtPauseEl.addEventListener('click', async () => {
+        try {
+          const res = await fetch('/api/youtube/pause', { method: 'POST' });
+          const data = await res.json();
+          if (data.error) {
+            alert(data.error);
+          } else {
+            appendLog(`[YOUTUBE BOT] Pipeline ${data.isPaused ? 'PAUSED' : 'RESUMED'}.`);
+            loadYoutubeStatus();
+          }
+        } catch (err) {
+          appendLog(`[YOUTUBE ERROR] ${err.message}`);
+        }
+      });
+    }
+
+    const btnYtCheckpointEl = document.getElementById('btnYtCheckpoint');
+    if (btnYtCheckpointEl) {
+      btnYtCheckpointEl.addEventListener('click', async () => {
+        try {
+          appendLog('[CHECKPOINT] Placing manual neural checkpoint and saving video timestamp...');
+          const res = await fetch('/api/youtube/checkpoint', { method: 'POST' });
+          const data = await res.json();
+          if (data.error) {
+            alert(data.error);
+          } else {
+            appendLog('[CHECKPOINT] Checkpoint saved successfully.');
+            loadYoutubeStatus();
+          }
+        } catch (err) {
+          appendLog(`[CHECKPOINT ERROR] ${err.message}`);
+        }
+      });
+    }
+
+    const btnClearCheckpointEl = document.getElementById('btnClearCheckpoint');
+    if (btnClearCheckpointEl) {
+      btnClearCheckpointEl.addEventListener('click', async () => {
+        if (!confirm('Clear saved checkpoint? Next training will start from 00:00.')) return;
+        try {
+          await fetch('/api/youtube/clear_checkpoint', { method: 'POST' });
+          appendLog('[CHECKPOINT] Checkpoint cleared. Will restart from beginning.');
+          loadYoutubeStatus();
+        } catch (err) {
+          appendLog(`[CHECKPOINT ERROR] ${err.message}`);
+        }
+      });
+    }
 
     window.manualSnapSync = function() {
       if (window.latestYtTelemetry && typeof window.latestYtTelemetry.currentSeconds === 'number') {
@@ -4066,17 +4163,58 @@
         const badge = document.getElementById('ytBadge');
         const btnStart = document.getElementById('btnYtStart');
         const btnStop = document.getElementById('btnYtStop');
+        const btnPause = document.getElementById('btnYtPause');
+        const btnCheckpoint = document.getElementById('btnYtCheckpoint');
 
         if (data.isRunning) {
-          badge.innerText = 'STREAMING IN RAM';
-          badge.className = 'px-1.5 py-0.2 text-[7px] bg-green-950 text-green-300 border border-green-600 rounded animate-pulse font-bold';
+          if (data.isPaused) {
+            badge.innerText = 'PAUSED';
+            badge.className = 'px-1.5 py-0.2 text-[7px] bg-yellow-950 text-yellow-300 border border-yellow-600 rounded font-bold';
+            if (btnPause) {
+              btnPause.innerText = '▶ RESUME';
+              btnPause.className = 'mc-btn mc-btn-green flex-1 text-[9px] py-2 font-bold';
+            }
+          } else {
+            badge.innerText = 'STREAMING IN RAM';
+            badge.className = 'px-1.5 py-0.2 text-[7px] bg-green-950 text-green-300 border border-green-600 rounded animate-pulse font-bold';
+            if (btnPause) {
+              btnPause.innerText = '⏸ PAUSE';
+              btnPause.className = 'mc-btn mc-btn-yellow flex-1 text-[9px] py-2 font-bold';
+            }
+          }
           btnStart.disabled = true;
           btnStop.disabled = false;
+          if (btnPause) btnPause.disabled = false;
+          if (btnCheckpoint) btnCheckpoint.disabled = false;
         } else {
           badge.innerText = 'IDLE';
           badge.className = 'px-1.5 py-0.2 text-[7px] bg-red-950 text-red-300 border border-red-700 rounded';
           btnStart.disabled = false;
           btnStop.disabled = true;
+          if (btnPause) {
+            btnPause.disabled = true;
+            btnPause.innerText = '⏸ PAUSE';
+            btnPause.className = 'mc-btn mc-btn-yellow flex-1 text-[9px] py-2 font-bold';
+          }
+          if (btnCheckpoint) btnCheckpoint.disabled = true;
+        }
+
+        // Checkpoint Status Banner
+        const cpBanner = document.getElementById('checkpointStatusBanner');
+        const cpText = document.getElementById('checkpointBannerText');
+        if (cpBanner && cpText) {
+          if (data.checkpoint && data.checkpoint.video_seconds > 0) {
+            cpBanner.classList.remove('hidden');
+            const cpSec = data.checkpoint.video_seconds || 0;
+            const cpH = Math.floor(cpSec / 3600);
+            const cpM = Math.floor((cpSec % 3600) / 60);
+            const cpS = Math.floor(cpSec % 60);
+            const cpTimeStr = (cpH > 0 ? `${cpH.toString().padStart(2, '0')}:` : '') + `${cpM.toString().padStart(2, '0')}:${cpS.toString().padStart(2, '0')}`;
+            const title = data.checkpoint.video_title || (data.checkpoint.video_source ? data.checkpoint.video_source.split(/[\\/]/).pop() : 'Video');
+            cpText.innerText = `${title} @ ${cpTimeStr} (Frame #${(data.checkpoint.frame || 0).toLocaleString()}, Step #${data.checkpoint.step || 0})`;
+          } else {
+            cpBanner.classList.add('hidden');
+          }
         }
 
         // 1. Current Video Game-Style Progress Bar
@@ -4209,6 +4347,11 @@
                 localVid.play().catch(() => {});
               }
               if (data.isRunning && typeof data.currentSeconds === 'number' && data.currentSeconds >= 0) {
+                if (data.isPaused) {
+                  if (!localVid.paused) localVid.pause();
+                } else {
+                  if (localVid.paused) localVid.play().catch(() => {});
+                }
                 if (Math.abs(localVid.currentTime - data.currentSeconds) > 1.2) {
                   localVid.currentTime = data.currentSeconds;
                 }
@@ -4235,8 +4378,15 @@
             }
 
             // Real-time synchronization for YouTube iframe
-            if (data.isRunning && isYtVideoOn && typeof data.currentSeconds === 'number' && data.currentSeconds > 0) {
+            if (data.isRunning && isYtVideoOn && typeof data.currentSeconds === 'number' && data.currentSeconds >= 0) {
               if (ytIframe && ytIframe.contentWindow) {
+                if (data.isPaused && !window.lastPlayerWasPaused) {
+                  window.lastPlayerWasPaused = true;
+                  ytIframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo', args: [] }), '*');
+                } else if (!data.isPaused && window.lastPlayerWasPaused) {
+                  window.lastPlayerWasPaused = false;
+                  ytIframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*');
+                }
                 if (!window.lastPlayerSyncedTime || Math.abs(window.lastPlayerSyncedTime - data.currentSeconds) > 1.5) {
                   window.lastPlayerSyncedTime = data.currentSeconds;
                   ytIframe.contentWindow.postMessage(JSON.stringify({
@@ -4581,7 +4731,7 @@
                   title="Click to inspect ${leaf.name} neural weights and recipe traversal"
                 >
                   <div class="flex items-center gap-1.5 min-w-0">
-                    <img src="${leaf.textureUrl || getItemTextureUrl(leaf.minecraftId)}" class="w-4 h-4 pixel-icon inline-block shrink-0" onerror="this.src='/textures/items/apple.png'" />
+                    <img src="${leaf.textureUrl || getItemTextureUrl(leaf.minecraftId)}" class="w-4 h-4 pixel-icon inline-block shrink-0" onerror="this.onerror=null; this.style.display='none'" />
                     <span class="text-[8px] font-bold text-white truncate">${leaf.name}</span>
                   </div>
                   <div class="flex items-center gap-1 shrink-0">
@@ -4698,7 +4848,7 @@
         <div class="bg-black/50 p-2.5 border border-stone-800 rounded space-y-2">
           <div class="flex items-start justify-between gap-2">
             <div class="flex items-center gap-2">
-              <img src="${node.textureUrl || getItemTextureUrl(node.minecraftId)}" class="w-8 h-8 pixel-icon inline-block" onerror="this.src='/textures/items/apple.png'" />
+              <img src="${node.textureUrl || getItemTextureUrl(node.minecraftId)}" class="w-8 h-8 pixel-icon inline-block" onerror="this.onerror=null; this.style.display='none'" />
               <div>
                 <h3 class="text-xs font-bold text-yellow-300">${node.name}</h3>
                 <div class="flex items-center gap-1.5 text-[7px] text-slate-400 font-mono mt-0.5">
