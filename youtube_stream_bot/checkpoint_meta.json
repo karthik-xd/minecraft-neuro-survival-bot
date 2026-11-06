@@ -1,0 +1,16 @@
+{
+  "video_source": "C:\\Users\\karth\\Downloads\\DL\\minecraft-survival-neuro-bot\\data_bot\\local_videos\\Minecraft_Survival_-_FULL_GAME_Walkthrough_-_No_commentary.f398.mp4",
+  "video_seconds": 11563.39,
+  "frame": 173451,
+  "total_frames": 173519,
+  "video_duration": 11567.95,
+  "video_title": "Minecraft_Survival_-_FULL_GAME_Walkthrough_-_No_commentary.f398.mp4",
+  "step": 5514,
+  "btn_loss": 0.0,
+  "cam_loss": 0.0,
+  "total_loss": 0.0,
+  "is_manual": false,
+  "timestamp": 1793898243.0488973,
+  "gru_neurons": 288,
+  "total_parameters": 1188701
+}

@@ -1,5 +1,5 @@
 {
-  "lastUpdated": 1793863441131,
+  "lastUpdated": 1793904000511,
   "chestsCount": 4,
   "chests": {
     "overworld_base_armory_10_64_25": {
@@ -135,7 +135,8 @@
           "textureUrl": "/textures/items/iron_axe.png",
           "category": "tools"
         }
-      ]
+      ],
+      "distance": "110.4"
     },
     "overworld_base_ores_12_64_25": {
       "id": "overworld_base_ores_12_64_25",
@@ -280,7 +281,8 @@
           "textureUrl": "/textures/items/netherite_scrap.png",
           "category": "materials"
         }
-      ]
+      ],
+      "distance": "110.5"
     },
     "overworld_base_food_14_64_25": {
       "id": "overworld_base_food_14_64_25",
@@ -385,7 +387,8 @@
           "textureUrl": "/textures/items/water_bucket.png",
           "category": "tools"
         }
-      ]
+      ],
+      "distance": "110.6"
     },
     "overworld_base_building_16_64_25": {
       "id": "overworld_base_building_16_64_25",
@@ -510,8 +513,60 @@
           "textureUrl": "/textures/blocks/furnace_front.png",
           "category": "utilities"
         }
-      ]
+      ],
+      "distance": "110.7"
     }
   },
-  "botPockets": []
+  "botPockets": [
+    {
+      "slot": 36,
+      "name": "oak_sapling",
+      "displayName": "Oak Sapling",
+      "count": 1,
+      "rarity": "COMMON",
+      "isConstantUse": false,
+      "textureUrl": "/textures/blocks/oak_sapling.png",
+      "category": "materials"
+    },
+    {
+      "slot": 37,
+      "name": "arrow",
+      "displayName": "Arrow",
+      "count": 3,
+      "rarity": "COMMON",
+      "isConstantUse": true,
+      "textureUrl": "/textures/entities/arrow.png",
+      "category": "combat"
+    },
+    {
+      "slot": 38,
+      "name": "bow",
+      "displayName": "Bow",
+      "count": 1,
+      "rarity": "UNCOMMON",
+      "isConstantUse": true,
+      "textureUrl": "/textures/items/bow.png",
+      "category": "combat"
+    },
+    {
+      "slot": 39,
+      "name": "bone",
+      "displayName": "Bone",
+      "count": 2,
+      "rarity": "COMMON",
+      "isConstantUse": false,
+      "textureUrl": "/textures/items/bone.png",
+      "category": "materials"
+    },
+    {
+      "slot": 40,
+      "name": "dirt",
+      "displayName": "Dirt",
+      "count": 43,
+      "rarity": "COMMON",
+      "isConstantUse": true,
+      "textureUrl": "/textures/blocks/dirt.png",
+      "category": "blocks"
+    }
+  ]
 }

@@ -525,7 +525,8 @@
           <div class="flex items-center gap-2 mt-1 text-[10px] text-stone-700">
             <span>GEN <span id="headerGen" class="text-emerald-700 font-bold">0</span></span>
             <span>•</span>
-            <span>NEURONS: <span id="headerNeurons" class="text-purple-700 font-bold">10</span></span>
+            <span>NEURONS: <span id="headerNeurons" class="text-purple-700 font-bold">14</span></span>
+            <span id="headerDeepNeuronsBadge" class="inline-flex items-center gap-1 text-cyan-800 font-bold">• GRU MEMORY: <span id="headerGruNeurons" class="text-purple-900 font-mono">288 NEURONS</span> <span class="text-stone-500 text-[8px]">(DEEP: <span id="headerDeepNeurons" class="text-indigo-800 font-mono">1.19M</span>)</span></span>
             <span>•</span>
             <span id="connStatus" class="inline-flex items-center gap-1 text-green-700">
               <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> CONNECTED
@@ -2263,9 +2264,20 @@
     function updateUI(t) {
       // Header & Generations
       document.getElementById('headerGen').innerText = t.brainGen ?? 0;
-      document.getElementById('headerNeurons').innerText = t.hiddenNeurons ?? 10;
+      document.getElementById('headerNeurons').innerText = t.hiddenNeurons ?? 14;
+      const deepP = t.deepPolicy || (t.youtube && t.youtube.deepPolicy);
+      const deepParamCount = deepP ? deepP.totalParameters : 1188683;
+      const gruUnits = deepP ? deepP.gruUnits : 288;
+      const headerGruEl = document.getElementById('headerGruNeurons');
+      if (headerGruEl) {
+        headerGruEl.innerText = `${gruUnits} NEURONS`;
+      }
+      const headerDeepEl = document.getElementById('headerDeepNeurons');
+      if (headerDeepEl) {
+        headerDeepEl.innerText = `${(deepParamCount / 1000000).toFixed(2)}M`;
+      }
       document.getElementById('brainGenText').innerText = t.brainGen ?? 0;
-      document.getElementById('neuronCountVal').innerText = t.hiddenNeurons ?? 10;
+      document.getElementById('neuronCountVal').innerText = t.hiddenNeurons ?? 14;
 
       // Online status
       botRunning = !!t.botOnline;
@@ -4586,7 +4598,10 @@
 
         // Update Global Root Stats
         document.getElementById('rootSamplesVal').innerText = fmtNum(data.totalChildSamples);
-        document.getElementById('rootNeuronsVal').innerText = fmtNum(data.uniqueDedicatedNeurons);
+        const deepSuffix = data.deepNeurons ? ` (+${(data.deepNeurons / 1000000).toFixed(2)}M DEEP)` : '';
+        const rootNeuronsEl = document.getElementById('rootNeuronsVal');
+        rootNeuronsEl.innerText = `${fmtNum(data.uniqueDedicatedNeurons || 14)} (GRU: ${data.gruNeurons || 288})`;
+        rootNeuronsEl.title = `14 Bot Neurons + ${data.gruNeurons || 288} GRU Recurrent Memory Neurons (${((data.deepNeurons || 1188683) / 1000000).toFixed(2)}M parameters) trained on video frames`;
         document.getElementById('rootAccVal').innerText = (data.averageAccuracy || 89.1) + '%';
         document.getElementById('rootCountVal').innerText = fmtNum(data.childCount);
 

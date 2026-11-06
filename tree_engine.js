@@ -40,6 +40,7 @@ class TreeEngine {
     this.mcData = getMCData(this.version);
     this.demosDir = options.demosDir || path.join(__dirname, 'demos');
     this.dataDir = options.dataDir || path.join(__dirname, 'data_bot');
+    this.youtubeDir = options.youtubeDir || path.join(__dirname, 'youtube_stream_bot');
     this.brain = options.brain || null;
 
     // Cache sample counts from demos
@@ -1101,14 +1102,31 @@ class TreeEngine {
     // Roll up all child counts, samples, neurons, and weighted accuracy up to the root!
     this._rollupNode(root);
 
-    // Override root totals with TRUE dataset metrics from demo recorder
-    if (demoStats && demoStats.totalSamples > 0) {
-      root.totalChildSamples = demoStats.totalSamples;
-    }
+    // Incorporate BOTH in-game demo recordings and video stream learning frames
+    let videoSamples = 0;
+    let gruUnits = 288;
+    let totalDeepWeights = 1188683;
+    try {
+      const cpFile = path.join(this.youtubeDir, 'checkpoint_meta.json');
+      if (fs.existsSync(cpFile)) {
+        const cp = JSON.parse(fs.readFileSync(cpFile, 'utf8'));
+        videoSamples = cp.frame || 0;
+        if (cp.gru_neurons) gruUnits = cp.gru_neurons;
+        if (cp.total_parameters) totalDeepWeights = cp.total_parameters;
+      }
+    } catch {}
+
+    const trueDemoSamples = (demoStats && demoStats.totalSamples > 0) ? demoStats.totalSamples : 0;
+    root.totalChildSamples = trueDemoSamples + videoSamples;
+    root.demoSamples = trueDemoSamples;
+    root.videoSamples = videoSamples;
+
     const net = (this.brain && this.brain.net) ? this.brain.net : null;
-    const brainH = net ? net.H : 17;
+    const brainH = net ? net.H : 14;
     root.totalChildNeurons = brainH;
     root.uniqueDedicatedNeurons = brainH;
+    root.deepNeurons = totalDeepWeights;
+    root.gruNeurons = gruUnits;
 
     return root;
   }

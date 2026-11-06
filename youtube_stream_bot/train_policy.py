@@ -51,7 +51,9 @@ class StreamingTrainer:
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.min_buffer_warmup = min_buffer_warmup
-        self.policy_checkpoint_path = policy_checkpoint_path
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.idm_weights_path = os.path.join(script_dir, idm_weights_path) if not os.path.isabs(idm_weights_path) else idm_weights_path
+        self.policy_checkpoint_path = os.path.join(script_dir, policy_checkpoint_path) if not os.path.isabs(policy_checkpoint_path) else policy_checkpoint_path
         self.resume_checkpoint = resume_checkpoint
         self.checkpoint_meta_path = os.path.join(os.path.dirname(self.policy_checkpoint_path) or ".", "checkpoint_meta.json")
 
@@ -77,20 +79,28 @@ class StreamingTrainer:
 
         # Load Inverse Dynamics Model (frozen pseudo-labeler)
         self.idm = InverseDynamicsModel().to(config.DEVICE)
-        if os.path.exists(idm_weights_path):
-            print(f"[Trainer] Loading IDM weights from: {idm_weights_path}")
-            self.idm.load_state_dict(torch.load(idm_weights_path, map_location=config.DEVICE, weights_only=True))
+        if os.path.exists(self.idm_weights_path):
+            print(f"[Trainer] Loading IDM weights from: {self.idm_weights_path}")
+            self.idm.load_state_dict(torch.load(self.idm_weights_path, map_location=config.DEVICE, weights_only=True))
         else:
-            print(f"[Warning] IDM weights '{idm_weights_path}' not found! Using initialized IDM weights.")
+            print(f"[Warning] IDM weights '{self.idm_weights_path}' not found! Using initialized IDM weights.")
         self.idm.eval()
         for param in self.idm.parameters():
             param.requires_grad = False
 
-        # Initialize Behavioral Cloning Policy (CNN + GRU)
-        self.policy = MinecraftPolicy().to(config.DEVICE)
-        if os.path.exists(policy_checkpoint_path):
-            print(f"[Trainer] Resuming policy from checkpoint: {policy_checkpoint_path}")
-            self.policy.load_state_dict(torch.load(policy_checkpoint_path, map_location=config.DEVICE, weights_only=True))
+        # Initialize Behavioral Cloning Policy (CNN + dynamic GRU with neurogenesis)
+        if os.path.exists(self.policy_checkpoint_path):
+            try:
+                sd = torch.load(self.policy_checkpoint_path, map_location=config.DEVICE, weights_only=True)
+                detected_gru = sd['gru.weight_hh_l0'].shape[1] if 'gru.weight_hh_l0' in sd else 256
+                self.policy = MinecraftPolicy(gru_hidden_dim=detected_gru).to(config.DEVICE)
+                self.policy.load_state_dict(sd)
+                print(f"[Trainer] Resumed policy: {self.policy.gru_hidden_dim} GRU neurons ({sum(p.numel() for p in self.policy.parameters()):,} weights) from: {self.policy_checkpoint_path}")
+            except Exception as e:
+                print(f"[Trainer Warning] Failed loading policy checkpoint ({e}), initializing standard policy.")
+                self.policy = MinecraftPolicy().to(config.DEVICE)
+        else:
+            self.policy = MinecraftPolicy().to(config.DEVICE)
 
         self.optimizer = torch.optim.AdamW(self.policy.parameters(), lr=self.learning_rate, weight_decay=1e-4)
 
@@ -103,7 +113,8 @@ class StreamingTrainer:
 
     def pause(self):
         self.is_paused = True
-        print("[PIPELINE PAUSED] Learning suspended by user command.", flush=True)
+        self.save_checkpoint(is_manual=True)
+        print(f"[PIPELINE PAUSED] Learning suspended & checkpoint saved at {self.current_video_sec:.1f}s (Frame #{self.current_frame}).", flush=True)
 
     def resume(self):
         self.is_paused = False
@@ -119,6 +130,8 @@ class StreamingTrainer:
                 "video_duration": round(float(self.current_video_duration), 2),
                 "video_title": self.current_video_title,
                 "step": int(self.current_step),
+                "gru_neurons": int(self.policy.gru_hidden_dim),
+                "total_parameters": int(sum(p.numel() for p in self.policy.parameters())),
                 "btn_loss": round(float(self.last_btn_loss), 4),
                 "cam_loss": round(float(self.last_cam_loss), 4),
                 "total_loss": round(float(self.last_total_loss), 4),
@@ -285,6 +298,14 @@ class StreamingTrainer:
 
                 total_finished_video_seconds += current_video_duration
                 print(f"[Producer Thread] Finished video: {url} ({new_frames_decoded} transitions added to buffer, total buffer: {len(self.replay_buffer)})", flush=True)
+
+                # Progressive Neurogenesis: Sprout +32 fresh recurrent memory units in GRU
+                if new_frames_decoded > 50:
+                    old_gru = self.policy.gru_hidden_dim
+                    new_gru = self.policy.grow_gru_neurons(add_neurons=32)
+                    self.optimizer = torch.optim.AdamW(self.policy.parameters(), lr=self.learning_rate, weight_decay=1e-4)
+                    print(f"\n✨ [NEUROGENESIS] Video episode learned! GRU memory expanded from {old_gru} -> {new_gru} neurons (+32 plastic recurrent units)! Total weights: {sum(p.numel() for p in self.policy.parameters()):,}\n", flush=True)
+                    self.save_checkpoint(is_manual=True)
             except Exception as e:
                 print(f"[Producer Warning] Stream error on {url}: {e}. Skipping safely.", flush=True)
             finally:
@@ -294,7 +315,7 @@ class StreamingTrainer:
         self.producer_finished = True
         print("[Producer Thread] Producer exited.", flush=True)
 
-    def train_policy_loop(self, total_steps: int = 0, log_interval: int = 50, save_interval: int = 500):
+    def train_policy_loop(self, total_steps: int = 0, log_interval: int = 50, save_interval: int = 0):
         """
         Main training loop. Uniformly samples uncorrelated random mini-batches from the Replay Buffer.
         If total_steps <= 0, continuously trains alongside video streaming until all videos finish.
@@ -354,8 +375,8 @@ class StreamingTrainer:
             step += 1
             self.current_step = step
 
-            # Uniform random non-consecutive batch sampling
-            batch_states, batch_buttons, batch_camera = self.replay_buffer.sample(self.batch_size)
+            # Contiguous sequence sampling for Recurrent BPTT (resolves short-horizon amnesia)
+            batch_states, batch_buttons, batch_camera = self.replay_buffer.sample_sequences(self.batch_size, seq_len=8)
 
             self.optimizer.zero_grad()
 
@@ -400,7 +421,7 @@ class StreamingTrainer:
                 step_count = 0
                 start_time = time.time()
 
-            if step % save_interval == 0:
+            if save_interval > 0 and step % save_interval == 0:
                 self.save_checkpoint(is_manual=False)
 
         # Final save
@@ -409,8 +430,8 @@ class StreamingTrainer:
 
 
 def cli_link_listener(trainer: StreamingTrainer):
-    """Allows user to type or paste new YouTube links into the terminal or send control commands (PAUSE, RESUME, CHECKPOINT)."""
-    print("\n[CLI Console] Commands: PAUSE, RESUME, CHECKPOINT, or paste video URLs/paths anytime.", flush=True)
+    """Allows user to type or paste new YouTube links into the terminal or send control commands (PAUSE, RESUME, CHECKPOINT, STOP)."""
+    print("\n[CLI Console] Commands: PAUSE, RESUME, CHECKPOINT, STOP, or paste video URLs/paths anytime.", flush=True)
     while not trainer.stop_signal.is_set():
         try:
             line = sys.stdin.readline()
@@ -426,6 +447,17 @@ def cli_link_listener(trainer: StreamingTrainer):
                 trainer.resume()
             elif upper == "CHECKPOINT":
                 trainer.save_checkpoint(is_manual=True)
+            elif upper == "GROW":
+                old_gru = trainer.policy.gru_hidden_dim
+                new_gru = trainer.policy.grow_gru_neurons(add_neurons=32)
+                trainer.optimizer = torch.optim.AdamW(trainer.policy.parameters(), lr=trainer.learning_rate, weight_decay=1e-4)
+                trainer.save_checkpoint(is_manual=True)
+                print(f"\n✨ [MANUAL NEUROGENESIS] GRU neurons expanded: {old_gru} -> {new_gru} (+32 recurrent units)! Total weights: {sum(p.numel() for p in trainer.policy.parameters()):,}\n", flush=True)
+            elif upper == "STOP":
+                print("[CLI Console] Received STOP command. Saving checkpoint before shutdown...", flush=True)
+                trainer.save_checkpoint(is_manual=True)
+                trainer.stop_signal.set()
+                break
             elif not cmd.startswith("#"):
                 trainer.queue_mgr.add_link(cmd)
         except Exception:

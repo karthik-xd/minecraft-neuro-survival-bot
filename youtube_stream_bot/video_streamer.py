@@ -126,9 +126,10 @@ class YouTubeFrameStreamer:
                 print(f"[Streamer Notice] Skipping unavailable YouTube video ({video_source}): {e}", flush=True)
                 return
 
-        # Cap start_second safely within duration
-        if duration_sec > 0 and start_second >= duration_sec - 1.0:
-            start_second = 0.0
+        # If checkpoint is within 2 seconds of full video duration, video already completed 100%
+        if duration_sec > 0 and start_second >= duration_sec - 2.0:
+            print(f"[Streamer Notice] Video '{title}' already 100% completed ({start_second:.1f}s / {duration_sec:.1f}s). Skipping to avoid restart. (Click RESET in UI to start over).", flush=True)
+            return
 
         total_frames = int(duration_sec * self.fps) if duration_sec > 0 else 0
         meta = {

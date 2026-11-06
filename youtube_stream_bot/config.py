@@ -37,7 +37,7 @@ NUM_CAMERA_AXES = 2
 TOTAL_ACTION_DIM = NUM_BUTTONS + NUM_CAMERA_AXES  # 11 dimensions total
 
 # 4. Training Hyperparameters
-BUFFER_CAPACITY = 50_000   # 50,000 transitions in RAM
+BUFFER_CAPACITY = 15_000   # 15,000 transitions in RAM (bounded uint8 memory to prevent OOM)
 BATCH_SIZE = 64
 POLICY_LR = 1e-4
 IDM_LR = 3e-4
