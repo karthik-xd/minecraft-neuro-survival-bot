@@ -1,26 +1,10 @@
 """
 train_policy.py - End-to-end streaming imitation learning pipeline for Minecraft.
-Architecture:
-  1. Producer Thread:
-     - Pulls YouTube URLs from LinkQueueManager.
-     - Fetches fresh ephemeral stream URL via yt-dlp.
-     - Pipes raw 128x128 @ 15fps frames directly from FFmpeg stdout into RAM (Zero disk writes).
-     - Passes adjacent frames (s_t, s_{t+1}) through pretrained Inverse Dynamics Model (IDM) to infer pseudo-actions.
-     - Stacks 4 temporal frames [12, 128, 128].
-     - Pushes transitions (state, buttons, camera_delta) into the 50k circular ReplayBuffer.
-  2. Consumer / Trainer Thread:
-     - Uniformly samples random non-consecutive batches [B, 12, 128, 128] from the replay buffer.
-     - Trains the Behavioral Cloning Policy (CNN + GRU temporal memory).
-     - Addresses class imbalance with weighted multi-binary BCE loss.
-     - Periodically checkpoints weights to 'minecraft_policy.pth'.
-
-Explicit Tensor Shapes:
-  - Input Stacked States: [B, 12, 128, 128], float32 in [0.0, 1.0]
-  - Pseudo-Labeled Buttons: [B, 9], float32 (binary 0.0 or 1.0)
-  - Pseudo-Labeled Camera:  [B, 2], float32 (normalized pitch, yaw deltas [-1.0, 1.0])
-  - Policy Output Buttons:  [B, 9], float32 logits
-  - Policy Output Camera:   [B, 2], float32 displacements in [-1.0, 1.0]
-  - GRU Hidden State:       [1, B, 256], float32
+Updated for OpenAI VPT Parity:
+  - 121-class categorical camera Cross-Entropy loss (eliminating mode averaging drift).
+  - 21-button discrete multi-binary loss with balanced focal weights (breaking back+left collapse).
+  - Recurrent BPTT across T=16 timesteps with circular boundary guarantees.
+  - Reset of mode-collapsed checkpoints on startup.
 """
 import os
 import sys
@@ -37,7 +21,22 @@ from queue_manager import LinkQueueManager
 from video_streamer import YouTubeFrameStreamer
 from frame_stacker import FrameStacker
 from replay_buffer import InactiveReplayBuffer
-from models import InverseDynamicsModel, MinecraftPolicy
+from models import InverseDynamicsModel, MinecraftPolicy, load_idm_weights
+
+
+def is_policy_mode_collapsed(state_dict: dict) -> bool:
+    """Checks if a saved checkpoint has mode-collapsed button weights (e.g., back+left saturation)."""
+    if "button_head.bias" not in state_dict:
+        return True
+    bias = state_dict["button_head.bias"]
+    if bias.shape[0] != config.NUM_BUTTONS:
+        return True  # Obsolete shape (e.g., 9 buttons vs 21)
+    if "camera_head.2.weight" in state_dict and state_dict["camera_head.2.weight"].shape[0] != config.NUM_CAMERA_CLASSES:
+        return True  # Obsolete camera head (e.g., 2 regression vs 121 classes)
+    # Check for extreme saturation
+    if (bias.abs() > 15.0).any():
+        return True
+    return False
 
 
 class StreamingTrainer:
@@ -46,11 +45,13 @@ class StreamingTrainer:
                  policy_checkpoint_path: str = "minecraft_policy.pth",
                  batch_size: int = config.BATCH_SIZE,
                  learning_rate: float = config.POLICY_LR,
-                 min_buffer_warmup: int = 256,
+                 min_buffer_warmup: int = 128,
+                 seq_len: int = config.DEFAULT_SEQ_LEN,
                  resume_checkpoint: bool = True):
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.min_buffer_warmup = min_buffer_warmup
+        self.seq_len = seq_len
         script_dir = os.path.dirname(os.path.abspath(__file__))
         self.idm_weights_path = os.path.join(script_dir, idm_weights_path) if not os.path.isabs(idm_weights_path) else idm_weights_path
         self.policy_checkpoint_path = os.path.join(script_dir, policy_checkpoint_path) if not os.path.isabs(policy_checkpoint_path) else policy_checkpoint_path
@@ -61,6 +62,8 @@ class StreamingTrainer:
         self.queue_mgr = LinkQueueManager()
         self.replay_buffer = InactiveReplayBuffer(capacity=config.BUFFER_CAPACITY)
         self.stop_signal = threading.Event()
+        self.model_lock = threading.Lock()
+        self.train_h = None
         self.is_paused = False
         self.is_producing = False
         self.producer_finished = False
@@ -81,33 +84,43 @@ class StreamingTrainer:
         self.idm = InverseDynamicsModel().to(config.DEVICE)
         if os.path.exists(self.idm_weights_path):
             print(f"[Trainer] Loading IDM weights from: {self.idm_weights_path}")
-            self.idm.load_state_dict(torch.load(self.idm_weights_path, map_location=config.DEVICE, weights_only=True))
+            load_idm_weights(self.idm, self.idm_weights_path, device=config.DEVICE)
         else:
-            print(f"[Warning] IDM weights '{self.idm_weights_path}' not found! Using initialized IDM weights.")
+            print(f"[Warning] IDM weights '{self.idm_weights_path}' not found! Using calibrated initial IDM weights.")
         self.idm.eval()
         for param in self.idm.parameters():
             param.requires_grad = False
 
-        # Initialize Behavioral Cloning Policy (CNN + dynamic GRU with neurogenesis)
-        if os.path.exists(self.policy_checkpoint_path):
+        # Initialize Behavioral Cloning Policy (CNN + GRU with 121-class camera & 21 buttons)
+        policy_loaded = False
+        if self.resume_checkpoint and os.path.exists(self.policy_checkpoint_path):
             try:
                 sd = torch.load(self.policy_checkpoint_path, map_location=config.DEVICE, weights_only=True)
-                detected_gru = sd['gru.weight_hh_l0'].shape[1] if 'gru.weight_hh_l0' in sd else 256
-                self.policy = MinecraftPolicy(gru_hidden_dim=detected_gru).to(config.DEVICE)
-                self.policy.load_state_dict(sd)
-                print(f"[Trainer] Resumed policy: {self.policy.gru_hidden_dim} GRU neurons ({sum(p.numel() for p in self.policy.parameters()):,} weights) from: {self.policy_checkpoint_path}")
+                if is_policy_mode_collapsed(sd):
+                    print(f"[Trainer Warning] Checkpoint '{self.policy_checkpoint_path}' contains obsolete shapes or mode-collapsed weights! Resetting to balanced initialization.")
+                else:
+                    detected_gru = sd['gru.weight_hh_l0'].shape[1] if 'gru.weight_hh_l0' in sd else 256
+                    self.policy = MinecraftPolicy(gru_hidden_dim=detected_gru).to(config.DEVICE)
+                    self.policy.load_state_dict(sd)
+                    print(f"[Trainer] Resumed policy: {self.policy.gru_hidden_dim} GRU neurons from {self.policy_checkpoint_path}")
+                    policy_loaded = True
             except Exception as e:
-                print(f"[Trainer Warning] Failed loading policy checkpoint ({e}), initializing standard policy.")
-                self.policy = MinecraftPolicy().to(config.DEVICE)
-        else:
+                print(f"[Trainer Warning] Failed loading policy checkpoint ({e}), resetting to clean policy.")
+
+        if not policy_loaded:
             self.policy = MinecraftPolicy().to(config.DEVICE)
+            # Save fresh, calibrated policy checkpoint
+            torch.save(self.policy.state_dict(), self.policy_checkpoint_path)
+            print(f"[Trainer] Initialized fresh balanced policy (21 buttons, 121 camera classes). Saved to '{self.policy_checkpoint_path}'.")
 
         self.optimizer = torch.optim.AdamW(self.policy.parameters(), lr=self.learning_rate, weight_decay=1e-4)
 
-        # Loss functions: positive weights compensate for rare action buttons
-        default_pos_weight = torch.tensor([1.5, 2.0, 2.0, 2.0, 3.0, 4.0, 2.0, 3.0, 4.0], device=config.DEVICE)
-        self.bce_loss_fn = nn.BCEWithLogitsLoss(pos_weight=default_pos_weight)
-        self.camera_loss_fn = nn.SmoothL1Loss()
+        # Balanced positive weights for 21 buttons to prevent mode collapse
+        # [forward, back, left, right, jump, sneak, sprint, attack, use, hotbar_1..9, inventory, drop, offhand]
+        pos_weights = [1.5, 2.0, 2.0, 2.0, 2.5, 3.0, 2.0, 2.5, 3.0] + [3.0] * 9 + [3.0, 4.0, 4.0]
+        pos_weight_tensor = torch.tensor(pos_weights, device=config.DEVICE, dtype=torch.float32)
+        self.bce_loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight_tensor)
+        self.camera_loss_fn = nn.CrossEntropyLoss()
 
         self.streamer = YouTubeFrameStreamer()
 
@@ -154,11 +167,10 @@ class StreamingTrainer:
 
     def stream_producer_loop(self):
         """
-        Background worker thread that continually fetches YouTube/local videos, decodes frames in memory,
-        pseudo-labels them with the IDM, and deposits transitions into the Replay Buffer.
-        Supports pausing, manual/auto checkpoints, and resuming from exact video timestamps.
+        Background worker that continuously streams gameplay video, pseudo-labels transitions
+        using the IDM, and pushes them into the Replay Buffer.
         """
-        print("[Producer Thread] Started YouTube streaming producer...", flush=True)
+        print("[Producer Thread] Started streaming producer...", flush=True)
         stacker = FrameStacker(stack_size=config.STACK_SIZE)
         total_finished_video_seconds = 0.0
         video_index = 0
@@ -177,10 +189,11 @@ class StreamingTrainer:
 
             print(f"\n[Producer Thread] ---> Streaming from: {url}", flush=True)
             self.current_video_url = url
+            self.train_h = None
             stacker.reset()
             prev_raw_frame_tensor = None  # [1, 3, 128, 128]
 
-            # Inspect checkpoint to resume from exact video timestamp
+            # Resume from exact video timestamp if meta exists
             start_second = 0.0
             start_frame = 0
             if self.resume_checkpoint and os.path.exists(self.checkpoint_meta_path):
@@ -219,21 +232,27 @@ class StreamingTrainer:
                     self.current_video_duration = current_video_duration
                     self.current_video_total_frames = current_video_total_frames
 
-                    # Shape: [128, 128, 3], uint8 -> [1, 3, 128, 128], float32
                     curr_frame_tensor = torch.from_numpy(frame_np).permute(2, 0, 1).unsqueeze(0).float().to(config.DEVICE) / 255.0
 
-                    # 1. Update temporal 4-frame stack
                     is_stack_full = stacker.add_frame(frame_np)
 
-                    # 2. Pseudo-label if we have consecutive frames and full stack
                     if prev_raw_frame_tensor is not None and is_stack_full:
                         with torch.no_grad():
-                            btn_logits, cam_delta = self.idm(prev_raw_frame_tensor, curr_frame_tensor)
+                            btn_logits, cam_logits = self.idm(prev_raw_frame_tensor, curr_frame_tensor)
                             pseudo_buttons = (torch.sigmoid(btn_logits).squeeze(0) > 0.5).float()
-                            pseudo_camera = cam_delta.squeeze(0)
+                            # Enforce physical control constraints (prevent conflicting movement keys)
+                            b_l = btn_logits.squeeze(0)
+                            if pseudo_buttons[0] == 1.0 and pseudo_buttons[1] == 1.0:
+                                if b_l[0] >= b_l[1]: pseudo_buttons[1] = 0.0
+                                else: pseudo_buttons[0] = 0.0
+                            if pseudo_buttons[2] == 1.0 and pseudo_buttons[3] == 1.0:
+                                if b_l[2] >= b_l[3]: pseudo_buttons[3] = 0.0
+                                else: pseudo_buttons[2] = 0.0
+
+                            pseudo_cam_class = cam_logits.argmax(dim=-1).squeeze(0)
 
                         stacked_state = stacker.get_stacked_state()
-                        self.replay_buffer.push(stacked_state, pseudo_buttons, pseudo_camera)
+                        self.replay_buffer.push(stacked_state, pseudo_buttons, pseudo_cam_class)
 
                         new_frames_decoded += 1
                         frames_streamed = start_frame + new_frames_decoded
@@ -245,7 +264,6 @@ class StreamingTrainer:
                         processing_fps = new_frames_decoded / elapsed_video_wall
                         speed_multiplier = processing_fps / config.TARGET_FPS
 
-                        # Current video progress & ETA
                         if current_video_total_frames > 0:
                             video_pct = min(100.0, (frames_streamed / current_video_total_frames) * 100.0)
                             remaining_frames = max(0, current_video_total_frames - frames_streamed)
@@ -254,56 +272,32 @@ class StreamingTrainer:
                             video_pct = 0.0
                             video_eta_sec = 0.0
 
-                        # Whole set progress & ETA
-                        remaining_queue = self.queue_mgr.remaining()
-                        estimated_avg_video_sec = current_video_duration if current_video_duration > 0 else 1800.0
-                        total_set_estimated_sec = total_finished_video_seconds + current_video_duration + (remaining_queue * estimated_avg_video_sec)
-                        current_set_finished_sec = total_finished_video_seconds + current_video_sec
-                        set_pct = min(100.0, (current_set_finished_sec / max(1.0, total_set_estimated_sec)) * 100.0)
-                        remaining_set_sec = max(0.0, total_set_estimated_sec - current_set_finished_sec)
-                        set_eta_sec = remaining_set_sec / max(0.5, speed_multiplier)
-
-                        def fmt_sec(s: float) -> str:
-                            s = int(max(0, s))
-                            h = s // 3600
-                            m = (s % 3600) // 60
-                            sec = s % 60
-                            return f"{h:02d}:{m:02d}:{sec:02d}" if h > 0 else f"{m:02d}:{sec:02d}"
-
-                        # Periodic telemetry emission every 15 frames (~1 sec in video time)
                         if new_frames_decoded % 15 == 0 or new_frames_decoded == 1:
                             active_keys = [config.BUTTON_NAMES[i].upper() for i, val in enumerate(pseudo_buttons) if val > 0.5]
                             keys_str = "+".join(active_keys) if active_keys else "IDLE"
-                            dx = float(pseudo_camera[0].item())
-                            dy = float(pseudo_camera[1].item())
-
-                            cur_time_str = fmt_sec(current_video_sec)
-                            tot_time_str = fmt_sec(current_video_duration)
-                            v_eta_str = fmt_sec(video_eta_sec)
-                            s_eta_str = fmt_sec(set_eta_sec)
+                            cam_delta = config.bin_to_camera(pseudo_cam_class)
+                            dx = float(cam_delta[0].item())
+                            dy = float(cam_delta[1].item())
 
                             print(f"[STREAMING PROGRESS] Frame #{frames_streamed:05d}/{current_video_total_frames:05d} ({video_pct:.1f}%) | "
-                                  f"Time: {cur_time_str}/{tot_time_str} ({current_video_sec:.1f}s/{current_video_duration:.1f}s) | "
+                                  f"Time: {current_video_sec:.1f}s/{current_video_duration:.1f}s | "
                                   f"Speed: {processing_fps:.1f}fps ({speed_multiplier:.1f}x) | "
-                                  f"VideoETA: {v_eta_str} ({video_eta_sec:.0f}s) | "
-                                  f"SetProgress: {set_pct:.1f}% | "
-                                  f"SetETA: {s_eta_str} ({set_eta_sec:.0f}s) | "
-                                  f"Queue: {video_index}/{total_videos_count} | "
                                   f"Keys: [{keys_str}] | "
-                                  f"Mouse: (dx:{dx:+.2f}, dy:{dy:+.2f}) | "
-                                  f"Buffer: {len(self.replay_buffer)}/50000 | "
-                                  f"Title: {current_video_title}", flush=True)
+                                  f"Camera: (bin:{pseudo_cam_class.item()}, dx:{dx:+.2f}, dy:{dy:+.2f}) | "
+                                  f"Buffer: {len(self.replay_buffer)}/{config.BUFFER_CAPACITY}", flush=True)
 
                     prev_raw_frame_tensor = curr_frame_tensor
 
                 total_finished_video_seconds += current_video_duration
-                print(f"[Producer Thread] Finished video: {url} ({new_frames_decoded} transitions added to buffer, total buffer: {len(self.replay_buffer)})", flush=True)
+                print(f"[Producer Thread] Finished video: {url} ({new_frames_decoded} transitions added to buffer)", flush=True)
 
                 # Progressive Neurogenesis: Sprout +32 fresh recurrent memory units in GRU
                 if new_frames_decoded > 50:
-                    old_gru = self.policy.gru_hidden_dim
-                    new_gru = self.policy.grow_gru_neurons(add_neurons=32)
-                    self.optimizer = torch.optim.AdamW(self.policy.parameters(), lr=self.learning_rate, weight_decay=1e-4)
+                    with self.model_lock:
+                        old_gru = self.policy.gru_hidden_dim
+                        new_gru = self.policy.grow_gru_neurons(add_neurons=32)
+                        self._rebuild_optimizer_preserving_state()
+                        self.train_h = None
                     print(f"\n✨ [NEUROGENESIS] Video episode learned! GRU memory expanded from {old_gru} -> {new_gru} neurons (+32 plastic recurrent units)! Total weights: {sum(p.numel() for p in self.policy.parameters()):,}\n", flush=True)
                     self.save_checkpoint(is_manual=True)
             except Exception as e:
@@ -315,10 +309,45 @@ class StreamingTrainer:
         self.producer_finished = True
         print("[Producer Thread] Producer exited.", flush=True)
 
+    def _rebuild_optimizer_preserving_state(self):
+        """Reconstructs AdamW optimizer while preserving momentum states for untouched and expanded parameters."""
+        param_names = {p: name for name, p in self.policy.named_parameters()}
+        old_momenta = {}
+        if hasattr(self, "optimizer") and hasattr(self.optimizer, "state"):
+            for p, s in self.optimizer.state.items():
+                if p in param_names:
+                    old_momenta[param_names[p]] = {
+                        k: (v.clone() if isinstance(v, torch.Tensor) else v)
+                        for k, v in s.items()
+                    }
+
+        self.optimizer = torch.optim.AdamW(self.policy.parameters(), lr=self.learning_rate, weight_decay=1e-4)
+
+        # Restore momentum tensors for matching and expanded layers
+        for name, p in self.policy.named_parameters():
+            if name in old_momenta:
+                saved_s = old_momenta[name]
+                new_s = {}
+                for k, v in saved_s.items():
+                    if k == "step":
+                        new_s[k] = v.clone() if isinstance(v, torch.Tensor) else v
+                    elif isinstance(v, torch.Tensor):
+                        if v.shape == p.shape:
+                            new_s[k] = v.to(p.device)
+                        else:
+                            # Pad momentum with zeros for newly sprouted neuron rows/cols
+                            pad_v = torch.zeros_like(p)
+                            slices = tuple(slice(0, min(s1, s2)) for s1, s2 in zip(pad_v.shape, v.shape))
+                            pad_v[slices] = v[slices].to(p.device)
+                            new_s[k] = pad_v
+                    else:
+                        new_s[k] = v
+                self.optimizer.state[p] = new_s
+
     def train_policy_loop(self, total_steps: int = 0, log_interval: int = 50, save_interval: int = 0):
         """
-        Main training loop. Uniformly samples uncorrelated random mini-batches from the Replay Buffer.
-        If total_steps <= 0, continuously trains alongside video streaming until all videos finish.
+        Main training loop. Uniformly samples contiguous sequences of length seq_len
+        from the Replay Buffer for Recurrent BPTT.
         """
         is_continuous = (total_steps <= 0)
         mode_str = "continuous video-driven stream" if is_continuous else f"{total_steps} steps"
@@ -338,7 +367,7 @@ class StreamingTrainer:
             idle_announced = False
             print(f"[Trainer] Buffer warmup: {len(self.replay_buffer)}/{self.min_buffer_warmup} transitions...", flush=True)
 
-        print(f"[Trainer] Replay buffer warmed up ({len(self.replay_buffer)} transitions). Starting training for {mode_str}...", flush=True)
+        print(f"[Trainer] Replay buffer warmed up ({len(self.replay_buffer)} transitions). Starting training for {mode_str} (seq_len={self.seq_len})...", flush=True)
         self.policy.train()
 
         running_loss = 0.0
@@ -365,7 +394,6 @@ class StreamingTrainer:
                 time.sleep(0.05)
                 continue
 
-            # In continuous mode, if producer is done and all videos processed, perform a 500-step cooldown convergence
             if is_continuous and self.producer_finished and self.queue_mgr.remaining() == 0:
                 cooldown_steps += 1
                 if cooldown_steps > 500:
@@ -376,20 +404,39 @@ class StreamingTrainer:
             self.current_step = step
 
             # Contiguous sequence sampling for Recurrent BPTT (resolves short-horizon amnesia)
-            batch_states, batch_buttons, batch_camera = self.replay_buffer.sample_sequences(self.batch_size, seq_len=8)
+            batch_states, batch_buttons, batch_camera = self.replay_buffer.sample_sequences(
+                self.batch_size, seq_len=self.seq_len
+            )
 
-            self.optimizer.zero_grad()
+            with self.model_lock:
+                self.optimizer.zero_grad()
 
-            pred_btn_logits, pred_camera, _ = self.policy(batch_states, h=None)
+                # Sequence forward pass through Policy with recurrent state continuity
+                curr_h = self.train_h
+                if curr_h is not None and (curr_h.shape[1] != self.batch_size or curr_h.shape[2] != self.policy.gru_hidden_dim):
+                    curr_h = None
 
-            loss_btn = self.bce_loss_fn(pred_btn_logits, batch_buttons)
-            loss_cam = self.camera_loss_fn(pred_camera, batch_camera)
+                pred_btn_logits, pred_cam_logits, next_h = self.policy(batch_states, h=curr_h)
 
-            total_loss = loss_btn + (2.0 * loss_cam)
-            total_loss.backward()
+                if next_h is not None and next_h.shape[1] == self.batch_size and next_h.shape[2] == self.policy.gru_hidden_dim:
+                    self.train_h = next_h.detach()
+                else:
+                    self.train_h = None
 
-            nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=1.0)
-            self.optimizer.step()
+                # Multi-binary button loss
+                loss_btn = self.bce_loss_fn(pred_btn_logits, batch_buttons)
+
+                # 121-class categorical camera Cross-Entropy loss
+                loss_cam = self.camera_loss_fn(
+                    pred_cam_logits.view(-1, config.NUM_CAMERA_CLASSES),
+                    batch_camera.view(-1)
+                )
+
+                total_loss = loss_btn + (1.5 * loss_cam)
+                total_loss.backward()
+
+                nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=1.0)
+                self.optimizer.step()
 
             self.last_btn_loss = loss_btn.item()
             self.last_cam_loss = loss_cam.item()
@@ -430,8 +477,8 @@ class StreamingTrainer:
 
 
 def cli_link_listener(trainer: StreamingTrainer):
-    """Allows user to type or paste new YouTube links into the terminal or send control commands (PAUSE, RESUME, CHECKPOINT, STOP)."""
-    print("\n[CLI Console] Commands: PAUSE, RESUME, CHECKPOINT, STOP, or paste video URLs/paths anytime.", flush=True)
+    """Allows user to control trainer from CLI."""
+    print("\n[CLI Console] Commands: PAUSE, RESUME, CHECKPOINT, GROW, STOP, or paste video URLs/paths anytime.", flush=True)
     while not trainer.stop_signal.is_set():
         try:
             line = sys.stdin.readline()
@@ -448,9 +495,11 @@ def cli_link_listener(trainer: StreamingTrainer):
             elif upper == "CHECKPOINT":
                 trainer.save_checkpoint(is_manual=True)
             elif upper == "GROW":
-                old_gru = trainer.policy.gru_hidden_dim
-                new_gru = trainer.policy.grow_gru_neurons(add_neurons=32)
-                trainer.optimizer = torch.optim.AdamW(trainer.policy.parameters(), lr=trainer.learning_rate, weight_decay=1e-4)
+                with trainer.model_lock:
+                    old_gru = trainer.policy.gru_hidden_dim
+                    new_gru = trainer.policy.grow_gru_neurons(add_neurons=32)
+                    trainer._rebuild_optimizer_preserving_state()
+                    trainer.train_h = None
                 trainer.save_checkpoint(is_manual=True)
                 print(f"\n✨ [MANUAL NEUROGENESIS] GRU neurons expanded: {old_gru} -> {new_gru} (+32 recurrent units)! Total weights: {sum(p.numel() for p in trainer.policy.parameters()):,}\n", flush=True)
             elif upper == "STOP":
@@ -467,9 +516,10 @@ def cli_link_listener(trainer: StreamingTrainer):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Stream YouTube gameplay & train Minecraft Imitation Policy.")
     parser.add_argument("--links", nargs="*", default=[], help="Initial list of YouTube URLs.")
-    parser.add_argument("--links-file", type=str, default=None, help="Text file containing YouTube URLs (one per line).")
+    parser.add_argument("--links-file", type=str, default=None, help="Text file containing YouTube URLs.")
     parser.add_argument("--steps", type=int, default=0, help="Total training steps (0 for continuous streaming).")
     parser.add_argument("--warmup", type=int, default=128, help="Min transitions in replay buffer before training starts.")
+    parser.add_argument("--seq-len", type=int, default=config.DEFAULT_SEQ_LEN, help="Sequence length for Recurrent BPTT.")
     parser.add_argument("--idm-weights", type=str, default="idm_model.pth", help="Path to IDM weights file.")
     parser.add_argument("--output", type=str, default="minecraft_policy.pth", help="Checkpoint output file.")
     parser.add_argument("--no-resume", action="store_true", help="Do not resume video from checkpoint timestamp.")
@@ -479,10 +529,10 @@ if __name__ == "__main__":
         idm_weights_path=args.idm_weights,
         policy_checkpoint_path=args.output,
         min_buffer_warmup=args.warmup,
+        seq_len=args.seq_len,
         resume_checkpoint=not args.no_resume
     )
 
-    # Enqueue links from file if provided
     if args.links_file and os.path.exists(args.links_file):
         with open(args.links_file, "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
@@ -490,7 +540,6 @@ if __name__ == "__main__":
                 if clean_line and not clean_line.startswith("#"):
                     trainer.queue_mgr.add_link(clean_line)
 
-    # Enqueue CLI provided links
     for lk in args.links:
         clean_lk = lk.strip().strip('"\'')
         if clean_lk and not clean_lk.startswith("#"):
@@ -499,11 +548,9 @@ if __name__ == "__main__":
     if trainer.queue_mgr.remaining() == 0:
         print("[Info] Link queue empty. Waiting for user to enqueue YouTube links via UI or CLI...", flush=True)
 
-    # Start background streaming producer thread
     producer_thread = threading.Thread(target=trainer.stream_producer_loop, daemon=True)
     producer_thread.start()
 
-    # Start CLI link listener thread
     cli_thread = threading.Thread(target=cli_link_listener, args=(trainer,), daemon=True)
     cli_thread.start()
 

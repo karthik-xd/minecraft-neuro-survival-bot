@@ -48,6 +48,10 @@ class HumanGameplayRecorder:
             elif char == 's': self.active_buttons["back"] = True
             elif char == 'a': self.active_buttons["left"] = True
             elif char == 'd': self.active_buttons["right"] = True
+            elif char in '123456789': self.active_buttons[f"hotbar_{char}"] = True
+            elif char == 'e': self.active_buttons["inventory"] = True
+            elif char == 'q': self.active_buttons["drop"] = True
+            elif char == 'f': self.active_buttons["offhand"] = True
         except AttributeError:
             if key == keyboard.Key.space: self.active_buttons["jump"] = True
             elif key == keyboard.Key.shift: self.active_buttons["sneak"] = True
@@ -61,6 +65,10 @@ class HumanGameplayRecorder:
             elif char == 's': self.active_buttons["back"] = False
             elif char == 'a': self.active_buttons["left"] = False
             elif char == 'd': self.active_buttons["right"] = False
+            elif char in '123456789': self.active_buttons[f"hotbar_{char}"] = False
+            elif char == 'e': self.active_buttons["inventory"] = False
+            elif char == 'q': self.active_buttons["drop"] = False
+            elif char == 'f': self.active_buttons["offhand"] = False
         except AttributeError:
             if key == keyboard.Key.space: self.active_buttons["jump"] = False
             elif key == keyboard.Key.shift: self.active_buttons["sneak"] = False
@@ -200,7 +208,16 @@ def generate_synthetic_human_data(num_episodes: int = 5, frames_per_ep: int = 30
             attack = 1.0 if np.random.rand() > 0.8 else 0.0
             use = 1.0 if np.random.rand() > 0.9 else 0.0
 
-            buttons = torch.tensor([w, s, a, d, jump, sneak, sprint, attack, use], dtype=torch.float32)
+            buttons = torch.zeros(config.NUM_BUTTONS, dtype=torch.float32)
+            buttons[0] = w
+            buttons[1] = s
+            buttons[2] = a
+            buttons[3] = d
+            buttons[4] = jump
+            buttons[5] = sneak
+            buttons[6] = sprint
+            buttons[7] = attack
+            buttons[8] = use
 
             # Simulate camera motion
             dx = float(np.clip(np.random.randn() * 0.3, -1.0, 1.0))
